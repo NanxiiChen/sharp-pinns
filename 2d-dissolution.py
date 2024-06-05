@@ -248,7 +248,7 @@ for epoch in range(EPOCHS):
     if epoch % BREAK_INTERVAL == 0:
 
         ac_weight, ch_weight, bc_weight, ic_weight = \
-            net.compute_weight(
+            net.compute_ntk_weight(
                 [ac_residual, ch_residual, bc_forward, ic_forward],
                 method="random",
                 batch_size=NTK_BATCH_SIZE

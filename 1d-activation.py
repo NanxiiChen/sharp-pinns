@@ -19,7 +19,8 @@ LOG_NAME = config.get("TRAIN", "LOG_NAME").strip('"')
 now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-writer = SummaryWriter(log_dir="runs/" + now)
+    # now = "fourier-feather"
+writer = SummaryWriter(log_dir="debugs/" + now)
 
 
 # Define the sampler
@@ -121,7 +122,7 @@ except:
     pass
 
 
-ref_sol = pd.read_csv(config.get("TRAIN", "REF_PATH"))
+ref_sol = pd.read_csv(config.get("TRAIN", "REF_PATH").strip('"'))
 
 TIME_COEF = config.getfloat("TRAIN", "TIME_COEF")
 GEO_COEF = config.getfloat("TRAIN", "GEO_COEF")
@@ -194,7 +195,7 @@ for epoch in range(EPOCHS):
         fig, ax = net.plot_samplings(
             geotime, bcdata,
             icdata, anchors)
-        # plt.savefig(f"./runs/{now}/sampling-{epoch}.png",
+        # plt.savefig(f"./debugs/{now}/sampling-{epoch}.png",
         #              bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
 
@@ -209,7 +210,7 @@ for epoch in range(EPOCHS):
     if epoch % BREAK_INTERVAL == 0:
 
         ac_weight, ch_weight, bc_weight, ic_weight = \
-            net.compute_weight(
+            net.compute_ntk_weight(
                 [ac_residual, ch_residual, bc_forward, ic_forward],
                 method=config.get("TRAIN", "NTK_MODE").strip('"'),
                 batch_size=NTK_BATCH_SIZE
@@ -234,8 +235,8 @@ for epoch in range(EPOCHS):
         fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
 
         if epoch % (BREAK_INTERVAL) == 0:
-            torch.save(net.state_dict(), f"./runs/{now}/model-{epoch}.pt")
-        # plt.savefig(f"./runs/{now}/fig-{epoch}.png",
+            torch.save(net.state_dict(), f"./debugs/{now}/model-{epoch}.pt")
+        # plt.savefig(f"./debugs/{now}/fig-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
         # ! Saving figure is too slow
 

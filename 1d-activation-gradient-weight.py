@@ -5,27 +5,28 @@ import pandas as pd
 from tensorboardX import SummaryWriter
 from matplotlib import pyplot as plt
 import pf_pinn as pfp
-from pf_pinn.utils import matplotlib_configs
 import numpy as np
 import torch
 import datetime
 import matplotlib
+import time
 matplotlib.use("Agg")
-matplotlib.rcParams.update(matplotlib_configs)
-
 
 config = configparser.ConfigParser()
 config.read("config.ini")
 
+LOG_NAME = config.get("TRAIN", "LOG_NAME").strip('"')
+now = LOG_NAME
+if LOG_NAME == "None":
+    now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+writer = SummaryWriter(log_dir="debugs/" + now)
 
-now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-writer = SummaryWriter(log_dir="runs/" + now)
 
-
+# Define the sampler
 class GeoTimeSampler:
     def __init__(
         self,
-        geo_span: list,
+        geo_span: list,  # 1d
         time_span: list,
     ):
         self.geo_span = geo_span
@@ -75,7 +76,7 @@ class GeoTimeSampler:
         xts = np.vstack([xt_l, xt_r])
         return torch.from_numpy(xts).float().requires_grad_(True)
 
-    def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[0.3, 0.5]):
+    def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[-0.1, 0.1]):
         if strategy == "lhs":
             xs = (lhs(1, ic_num) *
                   (self.geo_span[1] - self.geo_span[0]) + self.geo_span[0]).reshape(-1, 1)
@@ -133,7 +134,7 @@ bc_weight = 1
 ac_weight = 1
 ch_weight = 1
 
-NTK_BATCH_SIZE = config.getint("TRAIN", "NTK_BATCH_SIZE")
+# NTK_BATCH_SIZE = config.getint("TRAIN", "NTK_BATCH_SIZE")
 BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
 EPOCHS = config.getint("TRAIN", "EPOCHS")
 ALPHA = config.getfloat("TRAIN", "ALPHA")
@@ -157,7 +158,7 @@ def bc_func(xts):
 def ic_func(xts):
     with torch.no_grad():
         phi = (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-                              torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (xts[:, 0:1] - 0.40) / GEO_COEF)) / 2
+                              torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * xts[:, 0:1] / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE + (1 - h_phi) * 0.0
     return torch.cat([phi, c], dim=1)
@@ -183,21 +184,18 @@ for epoch in range(EPOCHS):
         method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
         anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
                                         method=method)
-        # anchors_2 = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                   method="gar")
-        # anchors = torch.cat([anchors_1, anchors_2], dim=0).unique(dim=0)
         net.train()
-        data = torch.cat([anchors, geotime],
+        data = torch.cat([geotime, anchors],
                          dim=0).requires_grad_(True)
-
-        data = data[torch.randperm(len(data))]
 
         bcdata = bcdata.to(net.device)
         icdata = icdata.to(net.device)
 
-        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        # plt.savefig(f"./runs/{now}/sampling-{epoch}.png",
-        #             bbox_inches='tight', dpi=300)
+        fig, ax = net.plot_samplings(
+            geotime, bcdata,
+            icdata, anchors)
+        # plt.savefig(f"./debugs/{now}/sampling-{epoch}.png",
+        #              bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
@@ -210,12 +208,15 @@ for epoch in range(EPOCHS):
 
     if epoch % BREAK_INTERVAL == 0:
 
-        ac_weight, ch_weight, bc_weight, ic_weight = \
-            net.compute_ntk_weight(
-                [ac_residual, ch_residual, bc_forward, ic_forward],
-                method="random",
-                batch_size=NTK_BATCH_SIZE
-            )
+        # ac_weight, ch_weight, bc_weight, ic_weight = \
+        #     net.compute_ntk_weight(
+        #         [ac_residual, ch_residual, bc_forward, ic_forward],
+        #         method=config.get("TRAIN", "NTK_MODE").strip('"'),
+        #         batch_size=NTK_BATCH_SIZE
+        #     )
+
+        ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
+            [ac_loss, ch_loss, bc_loss, ic_loss],)
 
         print(f"epoch: {epoch}, "
               f"ic_loss: {ic_loss.item():.4e}, "
@@ -236,11 +237,12 @@ for epoch in range(EPOCHS):
         fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
 
         if epoch % (BREAK_INTERVAL) == 0:
-            torch.save(net.state_dict(), f"./runs/{now}/model-{epoch}.pt")
-            # plt.savefig(f"./runs/{now}/fig-{epoch}.png",
-            #             bbox_inches='tight', dpi=300)
+            torch.save(net.state_dict(), f"./debugs/{now}/model-{epoch}.pt")
+        # plt.savefig(f"./debugs/{now}/fig-{epoch}.png",
+        #             bbox_inches='tight', dpi=300)
+        # ! Saving figure is too slow
 
-        writer.add_figure("fig/anchors", fig, epoch)
+        writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
 
     losses = ic_weight * ic_loss \
@@ -254,6 +256,7 @@ for epoch in range(EPOCHS):
     opt.zero_grad()
     losses.backward()
     opt.step()
+
 
 # torch.save(net.state_dict(), "model.pt")
 torch.save(net.state_dict(), "model.pt")

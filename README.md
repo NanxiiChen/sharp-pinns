@@ -140,7 +140,7 @@ CSE = 1.
 CLE = 5100/1.43e5
 
 [TRAIN]
-DIM = 1
+DIM = 2
 DRIVEN = "dissolution"
 GEO_COEF = 1e4
 TIME_COEF = 1e-2
