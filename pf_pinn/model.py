@@ -530,13 +530,14 @@ class PFPINN(torch.nn.Module):
 
     def compute_gradient_weight(self, losses):
 
-        grads_l2 = np.zeros(len(losses))
+        grads = np.zeros(len(losses))
 
         for idx, loss in enumerate(losses):
             grad = self.gradient(loss)
-            grads_l2[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
+            # grads[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
+            grads[idx] = torch.max(torch.abs(grad)).item()
 
-        return np.sum(grads_l2) / grads_l2
+        return np.sum(grads) / grads
 
 
 # class CausalWeightor:

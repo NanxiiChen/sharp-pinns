@@ -166,7 +166,7 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-6,
+    "eps": 1e-18,
     "delta": 0.99
 }
 
@@ -184,16 +184,6 @@ def ic_func(xts):
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
     return torch.cat([phi, c], dim=1)
-
-
-# def bc_func(xts):
-#     r = torch.sqrt(torch.abs(xts[:, 0:1] - 0.15) + xts[:, 1:2]).detach()
-#     with torch.no_grad():
-#         phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-#                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
-#         h_phi = -2 * phi**3 + 3 * phi**2
-#         c = h_phi * CSE
-#     return torch.cat([phi, c], dim=1)
 
 
 def bc_func(xts):
@@ -239,6 +229,7 @@ for epoch in range(EPOCHS):
         net.train()
         data = torch.cat([geotime, anchors],
                          dim=0).requires_grad_(True)
+        data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]
@@ -249,10 +240,10 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device)
         icdata = icdata.to(net.device)
 
-        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"./runs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        writer.add_figure("sampling", fig, epoch)
+        # writer.add_figure("sampling", fig, epoch)
 
     FORWARD_BATCH_SIZE = config.getint("TRAIN", "FORWARD_BATCH_SIZE")
 
@@ -282,14 +273,11 @@ for epoch in range(EPOCHS):
 
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
 
-    if epoch % (BREAK_INTERVAL*5) == 0:
         fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
                                         mesh_points=MESH_POINTS,
                                         ref_prefix=REF_PREFIX)
 
-        if epoch % (BREAK_INTERVAL) == 0:
-            torch.save(net.state_dict(),
-                       f"/root/tf-logs/{now}/model-{epoch}.pt")
+        torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
 
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
