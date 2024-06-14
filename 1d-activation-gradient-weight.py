@@ -134,7 +134,7 @@ bc_weight = 1
 ac_weight = 1
 ch_weight = 1
 
-# NTK_BATCH_SIZE = config.getint("TRAIN", "NTK_BATCH_SIZE")
+NTK_BATCH_SIZE = config.getint("TRAIN", "NTK_BATCH_SIZE")
 BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
 EPOCHS = config.getint("TRAIN", "EPOCHS")
 ALPHA = config.getfloat("TRAIN", "ALPHA")
@@ -208,15 +208,22 @@ for epoch in range(EPOCHS):
 
     if epoch % BREAK_INTERVAL == 0:
 
+        ac_weight, ch_weight, bc_weight, ic_weight = \
+            net.compute_ntk_weight(
+                [ac_residual, ch_residual, bc_forward, ic_forward],
+                method=config.get("TRAIN", "NTK_MODE").strip('"'),
+                batch_size=NTK_BATCH_SIZE
+            )
+
         # ac_weight, ch_weight, bc_weight, ic_weight = \
         #     net.compute_ntk_weight(
-        #         [ac_residual, ch_residual, bc_forward, ic_forward],
+        #         [ac_loss, ch_loss, bc_loss, ic_loss],
         #         method=config.get("TRAIN", "NTK_MODE").strip('"'),
         #         batch_size=NTK_BATCH_SIZE
         #     )
 
-        ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
-            [ac_loss, ch_loss, bc_loss, ic_loss],)
+        # ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
+        #     [ac_loss, ch_loss, bc_loss, ic_loss],)
 
         print(f"epoch: {epoch}, "
               f"ic_loss: {ic_loss.item():.4e}, "

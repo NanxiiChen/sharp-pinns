@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 # from allen_cahn.sampler import GeoTimeSampler
 import time
 import configparser
+# vmap
+from torch import vmap
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -47,6 +49,8 @@ class FourierEmbedding(torch.nn.Module):
         self.linear = torch.nn.Linear(in_features, embedding_features)
         self.linear.weight.data = \
             torch.randn(embedding_features, in_features) * std
+        # self.linear.weight.data = \
+        #     torch.linspace(0, 2*torch.pi*std, embedding_features)
         self.linear.bias.data.zero_()
         for param in self.linear.parameters():
             param.requires_grad = False
@@ -77,7 +81,8 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
                                                       embedding_features, std)
         self.spatial_high_embedding = FourierEmbedding(in_features-1,
                                                        embedding_features, std*5)
-        self.temporal_embedding = FourierEmbedding(1, embedding_features, std)
+        self.temporal_embedding = FourierEmbedding(
+            1, embedding_features, std/2)
 
     def forward(self, x):
         y_low = self.spatial_low_embedding(x[:, :-1])
@@ -162,13 +167,14 @@ class PFPINN(torch.nn.Module):
         self.sizes = sizes
         self.act = act
         self.emb = embedding_features * 6
+        self.fourier_featuer = False
         self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.fourier_embedding = FourierEmbedding(
         #     DIM+1, self.sizes[0]).to(self.device)
         self.multi_scale_fourier_embedding = \
             MultiScaleFourierEmbedding(DIM+1, embedding_features)\
             .to(self.device)
-        self.fourier_featuer = True
+
         # self.spatial_temporal_fourier_embedding = \
         #     SpatialTemporalFourierEmbedding(DIM+1, embedding_features)\
         #     .to(self.device)
@@ -234,8 +240,9 @@ class PFPINN(torch.nn.Module):
 
     def forward(self, x):
         # return self.model(x)
+        if self.fourier_featuer:
+            x = self.multi_scale_fourier_embedding(x)
 
-        x = self.multi_scale_fourier_embedding(x)
         return self.model(x)
 
     def net_u(self, x):
@@ -519,7 +526,7 @@ class PFPINN(torch.nn.Module):
         traces = np.array(traces)
         if return_ntk_info:
             return traces.sum() / traces, jacs
-        return traces.sum() / traces
+        return traces.sum() / traces / np.sqrt(np.sum(traces ** 2) / len(traces))
 
     def compute_gradient_weight(self, losses):
 
@@ -530,3 +537,25 @@ class PFPINN(torch.nn.Module):
             grads_l2[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
 
         return np.sum(grads_l2) / grads_l2
+
+
+# class CausalWeightor:
+#     def split_temporal_coords_into_segments(self,
+#                                             time_coords: torch.Tensor,
+#                                             num_segments: int = 10,
+#                                             time_span: tuple[float, float] = TIME_SPAN,) -> torch.Tensor:
+#         min_time, max_time = time_span
+#         bins = torch.linspace(min_time, max_time,
+#                               num_segments+1, device=time_coords.device)
+#         indices = torch.searchsorted(bins, time_coords)
+
+#         return indices
+
+#     def compute_causal_weight(self, )
+
+# if __name__ == "__main__":
+#     causal_weightor = CausalWeightor()
+#     time_coords = torch.rand(100, )
+#     segments = causal_weightor.split_temporal_coords_into_segments(
+#         time_coords, time_span=(0, 1))
+#     print(segments)

@@ -5,12 +5,14 @@ demo.*
 *.ipynb
 figures/
 debugs/
+causal/
 debug_files/
 2d-dissolution-3pits.py 
 2d-dissolution-0fluxbc.py
 logs.md
 Asana-Math/
 params-analysis-2d-1pits/
+*/model_legacy.py
 
 
 # Byte-compiled / optimized / DLL files
