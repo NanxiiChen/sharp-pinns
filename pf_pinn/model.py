@@ -166,18 +166,7 @@ class PFPINN(torch.nn.Module):
                                    else "cpu")
         self.sizes = sizes
         self.act = act
-        self.emb = embedding_features * 6
-        self.fourier_featuer = False
         self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
-        # self.fourier_embedding = FourierEmbedding(
-        #     DIM+1, self.sizes[0]).to(self.device)
-        self.multi_scale_fourier_embedding = \
-            MultiScaleFourierEmbedding(DIM+1, embedding_features)\
-            .to(self.device)
-
-        # self.spatial_temporal_fourier_embedding = \
-        #     SpatialTemporalFourierEmbedding(DIM+1, embedding_features)\
-        #     .to(self.device)
 
     def auto_grad(self, up, down):
         return torch.autograd.grad(inputs=down, outputs=up,
@@ -186,63 +175,16 @@ class PFPINN(torch.nn.Module):
 
     def make_layers(self):
         layers = []
-
-        if self.fourier_featuer:
-            linear_layer = torch.nn.Linear(self.emb, self.sizes[0])
-        else:
-            linear_layer = torch.nn.Linear(DIM+1, self.sizes[0])
-
-        torch.nn.init.xavier_uniform_(linear_layer.weight)
-        layers.append(("neck", linear_layer))
-
         for i in range(len(self.sizes) - 1):
 
-            linear_layer = torch.nn.Linear(
-                self.sizes[i], self.sizes[i + 1])
+            linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
             torch.nn.init.xavier_uniform_(linear_layer.weight)
             layers.append((f"linear{i}", linear_layer))
-            # if i != len(self.sizes) - 2:
-            layers.append((f"act{i}", self.act()))
-
-        output_layer = torch.nn.Linear(self.sizes[-1], 2)
-        torch.nn.init.xavier_uniform_(output_layer.weight)
-        layers.append(("output", output_layer))
-
+            if i != len(self.sizes) - 2:
+                layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-    # def make_layers_fourier(self):
-
-    #     layers = []
-    #     std = 1
-    #     for i in range(len(self.sizes) - 1):
-    #         if i == 0:
-    #             fourier_layer = FourierLayer(
-    #                 self.sizes[i], self.sizes[i + 1], std)
-    #             layers.append((f"fourier{i}", fourier_layer))
-
-    #         # elif i == 1:
-    #         #     linear_layer = torch.nn.Linear(
-    #         #         self.sizes[i] * 3, self.sizes[i + 1])
-    #         #     torch.nn.init.xavier_uniform_(linear_layer.weight)
-    #         #     layers.append((f"linear{i}", linear_layer))
-    #         #     if i != len(self.sizes) - 2:
-    #         #         layers.append((f"act{i}", self.act()))
-
-    #         else:
-
-    #             linear_layer = torch.nn.Linear(
-    #                 self.sizes[i], self.sizes[i + 1])
-    #             torch.nn.init.xavier_uniform_(linear_layer.weight)
-    #             layers.append((f"linear{i}", linear_layer))
-    #             if i != len(self.sizes) - 2:
-    #                 layers.append((f"act{i}", self.act()))
-    #     return OrderedDict(layers)
-
     def forward(self, x):
-        # return self.model(x)
-        if self.fourier_featuer:
-            x = self.multi_scale_fourier_embedding(x)
-
         return self.model(x)
 
     def net_u(self, x):
