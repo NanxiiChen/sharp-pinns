@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 # from allen_cahn.sampler import GeoTimeSampler
 import time
 import configparser
-# vmap
-from torch import vmap
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -468,16 +466,19 @@ class PFPINN(torch.nn.Module):
         traces = np.array(traces)
         if return_ntk_info:
             return traces.sum() / traces, jacs
-        return traces.sum() / traces / np.sqrt(np.sum(traces ** 2) / len(traces))
+        # return traces.sum() / traces / np.sqrt(np.sum(traces ** 2) * len(traces))
+        return traces.sum() / traces
 
     def compute_gradient_weight(self, losses):
 
         grads = np.zeros(len(losses))
 
         for idx, loss in enumerate(losses):
+            # zero_grad
+            self.zero_grad()
             grad = self.gradient(loss)
-            # grads[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
-            grads[idx] = torch.max(torch.abs(grad)).item()
+            grads[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
+            # grads[idx] = torch.max(torch.abs(grad)).item()
 
         return np.sum(grads) / grads
 
