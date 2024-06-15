@@ -48,7 +48,7 @@ class GeoTimeSampler:
                              [1], self.time_span[1]],
                        num=in_num)
 
-        return torch.from_numpy(geotime).float().requires_grad_(True)
+        return geotime.float().requires_grad_(True)
 
     # TODO: bc
     def bc_sample(self, bc_num: int, strategy: str = "lhs", xspan=[-0.025, 0.025]):
@@ -71,62 +71,53 @@ class GeoTimeSampler:
         xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
                    maxs=[self.geo_span[0][1], self.time_span[1]],
                    num=bc_num)
-        top = np.hstack([xts[:, 0:1], np.full(
-            xts.shape[0], self.geo_span[1][1]).reshape(-1, 1), xts[:, 1:2]])  # 顶边
-
+        
+        top = torch.cat([xts[:, 0:1], 
+                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
+                        xts[:, 1:2]], dim=1)  # 顶边
+        
         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
                    maxs=[self.geo_span[1][1], self.time_span[1]],
                    num=bc_num)
-        left = np.hstack([np.full(yts.shape[0], self.geo_span[0]
-                         [0]).reshape(-1, 1), yts[:, 0:1], yts[:, 1:2]])  # 左边
-        right = np.hstack([np.full(yts.shape[0], self.geo_span[0]
-                          [1]).reshape(-1, 1), yts[:, 0:1], yts[:, 1:2]])  # 右边
+        
 
-        xyts = np.vstack([xyts, top, left, right])
+        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=xts.device), 
+                        yts[:, 0:1], 
+                        yts[:, 1:2]], dim=1)  # 左边
 
-        return torch.from_numpy(xyts).float().requires_grad_(True)
-        # return torch.from_numpy(xyts).float().requires_grad_(True),\
-        #     torch.from_numpy(xyts2).float().requires_grad_(True)
+        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=xts.device), 
+                        yts[:, 0:1], 
+                        yts[:, 1:2]], dim=1)  # 右边
+
+        xyts = torch.cat([xyts, top, left, right], dim=0)
+
+        return xyts.float().requires_grad_(True)
+
 
     def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[[-0.1, 0.1], [0, 0.1]]):
         if strategy == "lhs":
-            # xs = (lhs(1, ic_num) *
-            #       (self.geo_span[1] - self.geo_span[0]) + self.geo_span[0]).reshape(-1, 1)
+
             xys = pfp.make_lhs_sampling_data(mins=[self.geo_span[0][0], self.geo_span[1][0]],
                                              maxs=[self.geo_span[0][1],
                                                    self.geo_span[1][1]],
                                              num=ic_num)
-            # xys_local = make_lhs_sampling_data(mins=[local_area[0][0], local_area[1][0]],
-            #                                    maxs=[local_area[0][1],
-            #                                          local_area[1][1]],
-            #                                    num=ic_num)
+
         elif strategy == "grid":
             xys = pfp.make_uniform_grid_data(mins=[self.geo_span[0][0], self.geo_span[1][0]],
                                              maxs=[self.geo_span[0][1],
                                                    self.geo_span[1][1]],
                                              num=ic_num)
-            # xys_local = make_uniform_grid_data(mins=[local_area[0][0], local_area[1][0]],
-            #                                    maxs=[local_area[0][1],
-            #                                          local_area[1][1]],
-            #                                    num=ic_num)
         elif strategy == "grid_transition":
             xys = pfp.make_uniform_grid_data_transition(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                                        maxs=[
-                self.geo_span[0][1], self.geo_span[1][1]],
+                                                        maxs=[self.geo_span[0][1], self.geo_span[1][1]],
                 num=ic_num)
-            # xys_local = make_uniform_grid_data_transition(mins=[local_area[0][0], local_area[1][0]],
-            #                                               maxs=[
-            #                                                   local_area[0][1], local_area[1][1]],
-            #                                               num=ic_num)
+
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_semi_circle_data(
-            radius=0.1, num=ic_num, center=[0, 0.])
-        xys = np.vstack([xys, xys_local])
-        xyts = np.hstack(
-            [xys, np.full(xys.shape[0], self.time_span[0]).reshape(-1, 1)])
-        return torch.from_numpy(xyts).float().requires_grad_(True)
-
+        xys_local = pfp.make_semi_circle_data(radius=0.1, num=ic_num, center=[0, 0.])
+        xys = torch.cat([xys, xys_local], dim=0)
+        xyts = torch.cat([xys, torch.full((xys.shape[0], 1), self.time_span[0], device=xys.device)], dim=1)
+        return xyts.float().requires_grad_(True)
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))

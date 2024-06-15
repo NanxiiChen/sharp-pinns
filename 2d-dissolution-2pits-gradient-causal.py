@@ -20,6 +20,7 @@ writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
 
 
+
 class GeoTimeSampler:
     def __init__(
         self,
@@ -49,7 +50,7 @@ class GeoTimeSampler:
                              [1], self.time_span[1]],
                        num=in_num)
 
-        return torch.from_numpy(geotime).float().requires_grad_(True)
+        return geotime.float().requires_grad_(True)
 
     # TODO: bc
     def bc_sample(self, bc_num: int, strategy: str = "lhs", xspan=[-0.025, 0.025]):
@@ -68,28 +69,33 @@ class GeoTimeSampler:
                                                 self.time_span[1]],
                                           num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
-        xyts_left = xyts.copy()
+        xyts_left = xyts.clone()
         xyts_left[:, 0:1] -= 0.15
-        xyts_right = xyts.copy()
+        xyts_right = xyts.clone()
         xyts_right[:, 0:1] += 0.15
 
         xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
                    maxs=[self.geo_span[0][1], self.time_span[1]],
                    num=bc_num)
-        top = np.hstack([xts[:, 0:1], np.full(
-            xts.shape[0], self.geo_span[1][1]).reshape(-1, 1), xts[:, 1:2]])  # 顶边
+        top = torch.cat([xts[:, 0:1], 
+                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
+                        xts[:, 1:2]], dim=1)  # 顶边
 
         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
                    maxs=[self.geo_span[1][1], self.time_span[1]],
                    num=bc_num)
-        left = np.hstack([np.full(yts.shape[0], self.geo_span[0]
-                         [0]).reshape(-1, 1), yts[:, 0:1], yts[:, 1:2]])  # 左边
-        right = np.hstack([np.full(yts.shape[0], self.geo_span[0]
-                          [1]).reshape(-1, 1), yts[:, 0:1], yts[:, 1:2]])  # 右边
+        
+        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=yts.device), 
+                        yts[:, 0:1], 
+                        yts[:, 1:2]], dim=1)  # 左边
 
-        xyts = np.vstack([xyts_left, xyts_right, top, left, right])
+        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=yts.device), 
+                        yts[:, 0:1], 
+                        yts[:, 1:2]], dim=1)  # 右边
 
-        return torch.from_numpy(xyts).float().requires_grad_(True)
+        xyts = torch.cat([xyts_left, xyts_right, top, left, right], dim=0)
+
+        return xyts.float().requires_grad_(True)
 
     def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[[-0.1, 0.1], [0, 0.1]]):
         if strategy == "lhs":
@@ -105,22 +111,22 @@ class GeoTimeSampler:
                                              num=ic_num)
         elif strategy == "grid_transition":
             xys = pfp.make_uniform_grid_data_transition(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                                        maxs=[
-                self.geo_span[0][1], self.geo_span[1][1]],
-                num=ic_num)
+                                                        maxs=[self.geo_span[0][1], self.geo_span[1][1]],
+                                                        num=ic_num)
         else:
             raise ValueError(f"Unknown strategy {strategy}")
         xys_local = pfp.make_semi_circle_data(radius=0.1,
                                               num=ic_num*2,
                                               center=[0, 0.])
-        xys_local_left = xys_local.copy()
+        xys_local_left = xys_local.clone()
         xys_local_left[:, 0:1] -= 0.15
-        xys_local_right = xys_local.copy()
+        xys_local_right = xys_local.clone()
         xys_local_right[:, 0:1] += 0.15
-        xys = np.vstack([xys, xys_local_left, xys_local_right])
-        xyts = np.hstack([xys, np.full(xys.shape[0],
-                                       self.time_span[0]).reshape(-1, 1)])
-        return torch.from_numpy(xyts).float().requires_grad_(True)
+        xys = torch.cat([xys, xys_local_left, xys_local_right], dim=0)  # 垂直堆叠
+        xyts = torch.cat([xys, 
+                          torch.full((xys.shape[0], 1), 
+                                     self.time_span[0], device=xys.device)], dim=1)  # 水平堆叠
+        return xyts.float().requires_grad_(True)
 
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
