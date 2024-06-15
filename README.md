@@ -40,7 +40,7 @@ RAR_BASE_SHAPE = 5000
 RAR_SHAPE = 512
 ADAPTIVE_SAMPLING = "rar"
 
-LOG_NAME = "1da-case-4-5"
+LOG_NAME = None
 ```
 
 ### 1d-dissolution driven
