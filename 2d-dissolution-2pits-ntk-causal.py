@@ -240,10 +240,10 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device)
         icdata = icdata.to(net.device)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        # plt.savefig(f"./runs/{now}/sampling-{epoch}.png",
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        writer.add_figure("sampling", fig, epoch)
 
     FORWARD_BATCH_SIZE = config.getint("TRAIN", "FORWARD_BATCH_SIZE")
 
@@ -334,13 +334,13 @@ for epoch in range(EPOCHS):
 
     if epoch % (BREAK_INTERVAL) == 0:
         writer.add_scalar("loss/total", losses, epoch)
-        writer.add_scalar("loss/ac_causal_weighted",
+        writer.add_scalar("loss/ac_loss",
                           ac_loss_causal_weighted, epoch)
-        writer.add_scalar("loss/ch_causal_weighted",
+        writer.add_scalar("loss/ch_loss",
                           ch_loss_causal_weighted, epoch)
-        writer.add_scalar("loss/ic_weighted",
+        writer.add_scalar("loss/ic_loss",
                           ic_loss_weighted, epoch)
-        writer.add_scalar("loss/bc_weighted",
+        writer.add_scalar("loss/bc_loss",
                           bc_loss_weighted, epoch)
 
         print(f"epoch: {epoch}, "
