@@ -27,24 +27,32 @@ GEO_SPAN = eval(config.get("TRAIN", "GEO_SPAN"))
 
 
 class FourierEmbedding(torch.nn.Module):
-    def __init__(self, in_features, embedding_features, std=1):
+    def __init__(self, in_features, embedding_features, std=1, method="trig"):
         super().__init__()
+        self.method = method
         self.linear = torch.nn.Linear(in_features, embedding_features)
-        self.linear.weight.data = \
-            torch.randn(embedding_features, in_features) * std * np.pi
-        # self.linear.weight.data = \
-        #     torch.linspace(0, 2*torch.pi*std, embedding_features)
-        self.linear.bias.data.zero_()
-        # for param in self.linear.parameters():
-        #     param.requires_grad = False
+        if self.method == "trig":
+            self.linear.weight.data = \
+                torch.randn(embedding_features, in_features) * std * np.pi
+            self.linear.bias.data.zero_()
+        elif self.method == "linear":
+            torch.nn.init.xavier_uniform_(self.linear.weight)
+        
+        for param in self.linear.parameters():
+            param.requires_grad = True
+
+        
 
     def forward(self, x):
         x = self.linear(x)
-        # if method == "trig":
-            # return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
-        # elif method == "exp":
-        #     return torch.cat([torch.exp(x), torch.exp(-x)], dim=1)
-        return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
+        method = self.method
+        if method == "trig":
+            return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
+        elif method == "linear":
+            return x
+        else:
+            raise ValueError("Ivalid method.")
+
 
 
 class SpatialTemporalFourierEmbedding(torch.nn.Module):
@@ -62,14 +70,23 @@ class SpatialTemporalFourierEmbedding(torch.nn.Module):
 
 
 class MultiScaleFourierEmbedding(torch.nn.Module):
+    
     def __init__(self, in_features, embedding_features=4, std=1):
         super().__init__()
-        self.spatial_low_embedding = FourierEmbedding(in_features-1,
-                                                      embedding_features, std/5)
-        self.spatial_high_embedding = FourierEmbedding(in_features-1,
-                                                       embedding_features, std*5)
+        self.spatial_low_embedding = FourierEmbedding(
+            in_features-1,
+            embedding_features,
+            std/5
+        )
+        self.spatial_high_embedding = FourierEmbedding(
+            in_features-1,
+            embedding_features,
+            std*2
+        )
         self.temporal_embedding = FourierEmbedding(
-            1, embedding_features, std/2)
+            1, embedding_features,
+            std, method="linear"
+        )
 
     def forward(self, x):
         y_low = self.spatial_low_embedding(x[:, :-1])
@@ -105,7 +122,7 @@ class PFPINN(torch.nn.Module):
         self,
         sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=8,
+        embedding_features=32,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -116,8 +133,10 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.embedding = FourierEmbedding(DIM, embedding_features)
-        self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
-        
+        # self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        self.spatial_embedding = FourierEmbedding(DIM, embedding_features, std=1, method="trig").to(self.device)
+        self.temporal_embedding = FourierEmbedding(1, embedding_features, std=1, method="trig").to(self.device)
+        self.out_layer = torch.nn.Linear(sizes[-1], 2).to(self.device)
 
     def auto_grad(self, up, down):
         return torch.autograd.grad(inputs=down, outputs=up,
@@ -142,8 +161,16 @@ class PFPINN(torch.nn.Module):
         return OrderedDict(layers)
 
     def forward(self, x):
-        x = self.embedding(x)
-        return self.model(x)
+        # x = self.embedding(x)
+        y_spatial = self.spatial_embedding(x[:, :-1])
+        y_temporal = self.temporal_embedding(x[:, -1:])
+        out_spatial = self.model(y_spatial)
+        out_temporal = self.model(y_temporal)
+        # merge by pointwise multiplication
+        out = self.out_layer(out_spatial * out_temporal)
+        return out
+        
+        # return self.model(x)
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
@@ -426,8 +453,8 @@ class PFPINN(torch.nn.Module):
         traces = np.array(traces)
         if return_ntk_info:
             return traces.sum() / traces, jacs
-        return traces.sum() / traces / np.sqrt(np.sum(traces ** 2) * len(traces))
-        # return traces.sum() / traces
+        # return traces.sum() / traces / np.sqrt(np.sum(traces ** 2) * len(traces))
+        return traces.sum() / traces
 
     def compute_gradient_weight(self, losses):
 

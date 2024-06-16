@@ -178,7 +178,6 @@ def bc_func(xts):
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
-
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
 scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=50000, gamma=0.5)
@@ -189,6 +188,7 @@ ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
+
 
 for epoch in range(EPOCHS):
     net.train()
@@ -202,39 +202,26 @@ for epoch in range(EPOCHS):
                                         method=method)
         net.train()
         data = torch.cat([geotime, anchors],
-                         dim=0).requires_grad_(True)
+                         dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]
 
-        bcdata = bcdata.to(net.device)
-        icdata = icdata.to(net.device)
+        bcdata = bcdata.to(net.device).detach().requires_grad_(True)
+        icdata = icdata.to(net.device).detach().requires_grad_(True)
 
         fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-#         plt.savefig(f"./runs/{now}/sampling-{epoch}.png",
-#                     bbox_inches='tight', dpi=300)
+        # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
+        #             bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
 
     FORWARD_BATCH_SIZE = config.getint("TRAIN", "FORWARD_BATCH_SIZE")
 
-    # ac_residual = torch.zeros(len(data), 2).to(net.device)
-    # ch_residual = torch.zeros(len(data), 2).to(net.device)
-    # for i in range(0, len(data), FORWARD_BATCH_SIZE):
-    #     if i + FORWARD_BATCH_SIZE < len(data):
-    #         data_batch = data[i:i+FORWARD_BATCH_SIZE]
-    #         ac_residual[i:i+FORWARD_BATCH_SIZE], \
-    #             ch_residual[i:i+FORWARD_BATCH_SIZE] = net.net_pde(data_batch)
-    #     else:
-    #         data_batch = data[i:]
-    #         ac_residual[i:], ch_residual[i:] = net.net_pde(data_batch)
-
     ac_residual, ch_residual = net.net_pde(data)
-    ac_loss = criteria(ac_residual, torch.zeros_like(ac_residual))
-    ch_loss = criteria(ch_residual, torch.zeros_like(ch_residual))
-    bc_forward = net.net_u(bcdata)
-    bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
+    bc_forward = net.net_u(bcdata)  
     ic_forward = net.net_u(icdata)
-    ic_loss = criteria(ic_forward, ic_func(icdata).detach())
+
 
     if epoch % BREAK_INTERVAL == 0:
 
@@ -244,17 +231,6 @@ for epoch in range(EPOCHS):
                 method="random",
                 batch_size=NTK_BATCH_SIZE
             )
-
-        print(f"epoch: {epoch}, "
-              f"ic_loss: {ic_loss.item():.4e}, "
-              f"bc_loss: {bc_loss.item():.4e}, "
-              f"ac_loss: {ac_loss.item():.4e}, "
-              f"ch_loss: {ch_loss.item():.4e}, ")
-
-        writer.add_scalar("loss/ic", ic_loss, epoch)
-        writer.add_scalar("loss/bc", bc_loss, epoch)
-        writer.add_scalar("loss/ac", ac_loss, epoch)
-        writer.add_scalar("loss/ch", ch_loss, epoch)
 
         writer.add_scalar("weight/ic", ic_weight, epoch)
         writer.add_scalar("weight/bc", bc_weight, epoch)
@@ -269,22 +245,40 @@ for epoch in range(EPOCHS):
                                         mesh_points=MESH_POINTS,
                                         ref_prefix=REF_PREFIX)
 
-        if epoch % (BREAK_INTERVAL) == 0:
-            torch.save(net.state_dict(),
-                       f"/root/tf-logs/{now}/model-{epoch}.pt")
-#             plt.savefig(f"./runs/{now}/fig-{epoch}.png",
-#                         bbox_inches='tight', dpi=300)
+        torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
 
-        writer.add_figure("fig/anchors", fig, epoch)
+        writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
+    
 
-    losses = ic_weight * ic_loss \
-        + bc_weight * bc_loss \
-        + ac_weight * ac_loss \
-        + ch_weight * ch_loss
+    ac_loss_weighted = criteria(ac_residual, torch.zeros_like(ac_residual)) * ac_weight
+    ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
+    ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
+    bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
+
+
+
+    losses = ic_loss_weighted \
+        + bc_loss_weighted \
+        + ac_loss_weighted \
+        + ch_loss_weighted
 
     if epoch % (BREAK_INTERVAL) == 0:
         writer.add_scalar("loss/total", losses, epoch)
+        writer.add_scalar("loss/ac_loss",
+                          ac_loss_weighted, epoch)
+        writer.add_scalar("loss/ch_loss",
+                          ch_loss_weighted, epoch)
+        writer.add_scalar("loss/ic_loss",
+                          ic_loss_weighted, epoch)
+        writer.add_scalar("loss/bc_loss",
+                          bc_loss_weighted, epoch)
+
+        print(f"epoch: {epoch}, "
+              f"ic_loss: {ic_loss_weighted.item():.4e}, "
+              f"bc_loss: {bc_loss_weighted.item():.4e}, "
+              f"ac_loss: {ac_loss_weighted.item():.4e}, "
+              f"ch_loss: {ch_loss_weighted.item():.4e}, ")
 
     opt.zero_grad()
     losses.backward()

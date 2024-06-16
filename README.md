@@ -102,12 +102,12 @@ GEO_COEF = 1e4
 TIME_COEF = 1e-2
 TIME_SPAN = (0, 0.5)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
-NETWORK_SIZE = [3] + [16]*8 + [2]
+NETWORK_SIZE = [32] + [64]*6 + [2]
 NUM_SEG = 5
 
 MESH_POINTS = "./data/2d/mesh_points.npy"
 REF_PREFIX = "./data/2d/sol-"
-TARGET_TIMES = [0.00, 5.12, 10.24, 20.48, 49.15]
+TARGET_TIMES = [0.00, 5.12, 10.24, 49.15]
 
 NTK_BATCH_SIZE = 200
 BREAK_INTERVAL = 500
@@ -147,7 +147,7 @@ GEO_COEF = 1e4
 TIME_COEF = 1e-2
 TIME_SPAN = (0, 0.2)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
-NETWORK_SIZE = [3] + [64]*8 + [2]
+NETWORK_SIZE = [48] + [64]*6 + [2]
 NUM_SEG = 5
 
 MESH_POINTS = "./data/2d-2pits/mesh_points.npy"
@@ -155,10 +155,10 @@ REF_PREFIX = "./data/2d-2pits/sol-"
 TARGET_TIMES = [0.00, 2.30, 10.75, 18.94]
 
 NTK_BATCH_SIZE = 100
-BREAK_INTERVAL = 500
+BREAK_INTERVAL = 100
 EPOCHS = 800000
 ALPHA = 1.0
-LR = 2e-4
+LR = 5e-4
 
 GEOTIME_SHAPE = [15, 15, 15]
 BCDATA_SHAPE = 200

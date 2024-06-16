@@ -135,17 +135,6 @@ net = pfp.PFPINN(
     act=torch.nn.Tanh
 )
 
-# save the fourier embedding matrix
-# torch.save(net.embedding.spatial_low_embedding.state_dict(),
-#               f"/root/tf-logs/{now}/spatial_low_embedding.pt")
-# torch.save(net.embedding.spatial_high_embedding.state_dict(),
-#                 f"/root/tf-logs/{now}/spatial_high_embedding.pt")
-# torch.save(net.embedding.temporal_embedding.state_dict(),
-#                 f"/root/tf-logs/{now}/temporal_embedding.pt")
-# torch.save(net.embedding.spatial_embedding.state_dict(),
-#                 f"/root/tf-logs/{now}/spatial_embedding.pt")
-# torch.save(net.embedding.temporal_embedding.state_dict(),
-#                 f"/root/tf-logs/{now}/temporal_embedding.pt")
 
 resume = config.get("TRAIN", "RESUME").strip('"')
 try:
@@ -189,10 +178,6 @@ causal_configs = {
 
 
 def ic_func(xts):
-    # r = torch.min(
-    #     torch.sqrt((xts[:, 0:1] - 0.15)**2 + xts[:, 1:2]**2),
-    #     torch.sqrt((xts[:, 0:1] + 0.15)**2 + xts[:, 1:2]**2)
-    # ).detach()
     r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
                    + xts[:, 1:2]**2).detach()
     with torch.no_grad():
@@ -220,8 +205,6 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
     bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
     indices = torch.bucketize(ts, bins)
     return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
-
-
 
 
 
