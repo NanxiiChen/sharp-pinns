@@ -12,8 +12,9 @@ config.read("config.ini")
 
 ALPHA_PHI = config.getfloat("PARAM", "ALPHA_PHI")
 OMEGA_PHI = config.getfloat("PARAM", "OMEGA_PHI")
-DD = config.getfloat("PARAM", "DD")
 AA = config.getfloat("PARAM", "AA")
+MM = config.getfloat("PARAM", "MM")
+DD = config.getfloat("PARAM", "DD")
 LP = config.getfloat("PARAM", "LP")
 CSE = config.getfloat("PARAM", "CSE")
 CLE = eval(config.get("PARAM", "CLE"))
@@ -36,8 +37,8 @@ class FourierEmbedding(torch.nn.Module):
                 torch.randn(embedding_features, in_features) * std * np.pi
             self.linear.bias.data.zero_()
         elif self.method == "linear":
-            torch.nn.init.xavier_uniform_(self.linear.weight)
-        
+            torch.nn.init.xavier_normal_(self.linear.weight)
+            
         for param in self.linear.parameters():
             param.requires_grad = True
 
@@ -71,17 +72,17 @@ class SpatialTemporalFourierEmbedding(torch.nn.Module):
 
 class MultiScaleFourierEmbedding(torch.nn.Module):
     
-    def __init__(self, in_features, embedding_features=4, std=1):
+    def __init__(self, in_features, embedding_features=8, std=1):
         super().__init__()
         self.spatial_low_embedding = FourierEmbedding(
             in_features-1,
             embedding_features,
-            std/5
+            std/10
         )
         self.spatial_high_embedding = FourierEmbedding(
             in_features-1,
             embedding_features,
-            std*2
+            std
         )
         self.temporal_embedding = FourierEmbedding(
             1, embedding_features,
@@ -122,7 +123,7 @@ class PFPINN(torch.nn.Module):
         self,
         sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=32,
+        embedding_features=8,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -132,11 +133,12 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
+        self.params = [p for p in list(self.parameters())[:-1] if p.requires_grad]
         # self.embedding = FourierEmbedding(DIM, embedding_features)
-        # self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
-        self.spatial_embedding = FourierEmbedding(DIM, embedding_features, std=1, method="trig").to(self.device)
-        self.temporal_embedding = FourierEmbedding(1, embedding_features, std=1, method="trig").to(self.device)
-        self.out_layer = torch.nn.Linear(sizes[-1], 2).to(self.device)
+        self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        # self.spatial_embedding = FourierEmbedding(DIM, embedding_features, std=1, method="trig").to(self.device)
+        # self.temporal_embedding = FourierEmbedding(1, embedding_features, std=1, method="trig").to(self.device)
+        # self.out_layer = torch.nn.Linear(sizes[-1], 2).to(self.device)
 
     def auto_grad(self, up, down):
         return torch.autograd.grad(inputs=down, outputs=up,
@@ -161,16 +163,16 @@ class PFPINN(torch.nn.Module):
         return OrderedDict(layers)
 
     def forward(self, x):
-        # x = self.embedding(x)
-        y_spatial = self.spatial_embedding(x[:, :-1])
-        y_temporal = self.temporal_embedding(x[:, -1:])
-        out_spatial = self.model(y_spatial)
-        out_temporal = self.model(y_temporal)
+        x = self.embedding(x)
+        # y_spatial = self.spatial_embedding(x[:, :-1])
+        # y_temporal = self.temporal_embedding(x[:, -1:])
+        # out_spatial = self.model(y_spatial)
+        # out_temporal = self.model(y_temporal)
         # merge by pointwise multiplication
-        out = self.out_layer(out_spatial * out_temporal)
-        return out
+        # out = self.out_layer(out_spatial * out_temporal)
+        # return x
         
-        # return self.model(x)
+        return self.model(x)
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
@@ -187,6 +189,7 @@ class PFPINN(torch.nn.Module):
             return torch.cat([dev_phi[:, 1:2], dev_c[:, 1:2]], dim=1)
         elif on == "x":
             return torch.cat([dev_phi[:, 0:1], dev_c[:, 0:1]], dim=1)
+
 
     def net_pde(self, geotime):
         # compute the pde residual
@@ -231,6 +234,58 @@ class PFPINN(torch.nn.Module):
         ch = dc_dt - DD / 2 / AA * nabla2_df_dc
 
         return [ac, ch]
+    
+    # def net_pde(self, geotime):
+    #     # compute the pde residual
+    #     # geo: x/y, t
+    #     # sol: phi, c
+        
+    #     L0 = 1 / GEO_COEF
+    #     t0 = 1 / TIME_COEF
+    #     AC1 = 2 * AA * LP * t0
+    #     AC2 = LP * OMEGA_PHI * t0
+    #     AC3 = LP * ALPHA_PHI * t0 / L0 ** 2
+    #     CH1 = 2 * AA * MM * t0 / L0 ** 2
+        
+        
+    #     geotime = geotime.detach().requires_grad_(True).to(self.device)
+    #     sol = self.net_u(geotime)
+
+    #     dphi_dgeotime = self.auto_grad(sol[:, 0:1], geotime)
+    #     dc_dgeotime = self.auto_grad(sol[:, 1:2], geotime)
+
+    #     dphi_dt = dphi_dgeotime[:, -1:]
+    #     dc_dt = dc_dgeotime[:, -1:]
+
+    #     dphi_dgeo = dphi_dgeotime[:, :-1]
+    #     dc_dgeo = dc_dgeotime[:, :-1]
+
+    #     nabla2phi = torch.zeros_like(dphi_dgeo[:, 0:1])
+    #     for i in range(geotime.shape[1]-1):
+    #         nabla2phi += self.auto_grad(dphi_dgeo[:, i:i+1],
+    #                                     geotime)[:, i:i+1]
+
+    #     nabla2c = torch.zeros_like(dphi_dgeo[:, 0:1])
+    #     for i in range(geotime.shape[1]-1):
+    #         nabla2c += self.auto_grad(dc_dgeo[:, i:i+1],
+    #                                   geotime)[:, i:i+1]
+        
+    #     h_phi = -2 * sol[:, 0:1] ** 3 + 3 * sol[:, 0:1] ** 2
+    #     # g_phi = sol[:, 0:1] ** 2 * (sol[:, 0:1] - 1) ** 2
+    #     dh_dphi = -6 * sol[:, 0:1] ** 2 + 6 * sol[:, 0:1]
+    #     d2h_dphi2 = -12 * sol[:, 0:1] + 6
+    #     dg_dphi = 4 * sol[:, 0:1] ** 3 - 6 * sol[:, 0:1] ** 2 + 2 * sol[:, 0:1]
+    #     # nabla_h_phi = dh_dphi * dphi_dgeo
+    #     nabla2_h_phi = dh_dphi * nabla2phi + d2h_dphi2 * torch.sum(dphi_dgeo ** 2, dim=1, keepdim=True)
+        
+            
+    #     ch = dc_dt - CH1 * nabla2c + CH1 * (CSE - CLE) * nabla2_h_phi
+    #     ac = dphi_dt \
+    #         - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
+    #         - AC2 * dg_dphi \
+    #         - AC3 * nabla2phi \
+
+    #     return [ac, ch]
 
     def gradient(self, loss):
         # compute gradient of loss w.r.t. model parameters
@@ -268,16 +323,37 @@ class PFPINN(torch.nn.Module):
             raise ValueError("method must be one of 'rar' or 'gar'")
         return base_data[idxs].to(self.device)
 
-    def compute_jacobian(self, output):
+    def compute_jacobian(self, output, mini_batch=True):
         output = output.reshape(-1)
-        params = [p for p in list(self.parameters())[:-1] if p.requires_grad]
+        
+        if not mini_batch:
+            grads = torch.autograd.grad(output, self.params,
+                                        (torch.eye(output.shape[0])
+                                            .to(self.device),),
+                                        is_grads_batched=True, retain_graph=True)
 
-        grads = torch.autograd.grad(output, params,
-                                    (torch.eye(output.shape[0])
-                                        .to(self.device),),
-                                    is_grads_batched=True, retain_graph=True)
+            return torch.cat([grad.flatten().reshape(len(output), -1) for grad in grads], 1)
+        else:
+            batch_size = 100  # Adjust this value to fit your GPU memory
+            grads = []
+            for i in range(0, output.shape[0], batch_size):
+                output_batch = output[i:min(i + batch_size, output.shape[0])]
+                grad_batch = torch.autograd.grad(output_batch, self.params,
+                                                 (torch.eye(output_batch.shape[0])
+                                                  .to(self.device),),
+                                                 is_grads_batched=True, retain_graph=True)
+                grads.append(torch.cat([grad.flatten().reshape(len(output_batch), -1) for grad in grad_batch], 1))
+            return torch.cat(grads)
 
-        return torch.cat([grad.flatten().reshape(len(output), -1) for grad in grads], 1)
+    
+    # def compute_jacobian(self, output):
+    #     output = output.reshape(-1)
+
+    #     grads = torch.autograd.grad(output, self.params,
+    #                                 grad_outputs=torch.ones_like(output),
+    #                                 create_graph=True, retain_graph=True)
+
+    #     return torch.cat([grad.flatten().reshape(len(output), -1) for grad in grads], 1)
 
     def compute_ntk(self, jac, compute='trace'):
         if compute == 'full':

@@ -6,13 +6,15 @@
 
 ```ini
 [PARAM]
-ALPHA_PHI = 9.62e-5
-OMEGA_PHI = 1.663e7
+ALPHA_PHI = 1.03e-4
+OMEGA_PHI = 1.76e7
+MM = 7.94e-18
 DD = 8.5e-10
 AA = 5.35e7
 LP = 1e-11
 CSE = 1.
 CLE = 5100/1.43e5
+
 
 [TRAIN]
 DIM = 1
@@ -87,8 +89,9 @@ ADAPTIVE_SAMPLING = "rar"
 
 ```ini
 [PARAM]
-ALPHA_PHI = 9.62e-5
-OMEGA_PHI = 1.663e7
+ALPHA_PHI = 1.03e-4
+OMEGA_PHI = 1.76e7
+MM = 7.94e-18
 DD = 8.5e-10
 AA = 5.35e7
 LP = 2.0
@@ -102,7 +105,7 @@ GEO_COEF = 1e4
 TIME_COEF = 1e-2
 TIME_SPAN = (0, 0.5)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
-NETWORK_SIZE = [32] + [64]*6 + [2]
+NETWORK_SIZE = [3] + [16]*8 + [2]
 NUM_SEG = 5
 
 MESH_POINTS = "./data/2d/mesh_points.npy"
@@ -113,7 +116,7 @@ NTK_BATCH_SIZE = 200
 BREAK_INTERVAL = 500
 EPOCHS = 800000
 ALPHA = 1.0
-LR = 5e-4
+LR = 1e-3
 
 GEOTIME_SHAPE = [20, 20, 20]
 BCDATA_SHAPE = 128
@@ -121,7 +124,7 @@ ICDATA_SHAPE = 256
 SAMPLING_STRATEGY = ["grid_transition", "lhs", "lhs"]
 
 RAR_BASE_SHAPE = 20000
-RAR_SHAPE = 2000
+RAR_SHAPE = 3000
 
 RESUME = None
 ADAPTIVE_SAMPLING = "rar"
@@ -132,8 +135,9 @@ FORWARD_BATCH_SIZE = 2000
 
 ```ini
 [PARAM]
-ALPHA_PHI = 9.62e-5
-OMEGA_PHI = 1.663e7
+ALPHA_PHI = 1.03e-4
+OMEGA_PHI = 1.76e7
+MM = 7.94e-18
 DD = 8.5e-10
 AA = 5.35e7
 LP = 2.0

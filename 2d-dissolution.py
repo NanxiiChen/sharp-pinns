@@ -50,7 +50,6 @@ class GeoTimeSampler:
 
         return geotime.float().requires_grad_(True)
 
-    # TODO: bc
     def bc_sample(self, bc_num: int, strategy: str = "lhs", xspan=[-0.025, 0.025]):
         # 四条边，顺着时间变成四个面
         if strategy == "lhs":
@@ -180,7 +179,7 @@ def bc_func(xts):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=50000, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -255,7 +254,6 @@ for epoch in range(EPOCHS):
     ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
     ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
     bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
-
 
 
     losses = ic_loss_weighted \
