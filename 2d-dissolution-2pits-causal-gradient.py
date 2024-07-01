@@ -173,9 +173,10 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps_ac": 1e-16,
-    "eps_ch": 1e-12,
-    "delta": 0.99
+    "eps": 1e-12,
+    "min_thresh": 0.99,
+    "step": 2,
+    "mean_thresh": 0.5
 }
 
 
@@ -276,18 +277,24 @@ for epoch in range(EPOCHS):
             ch_causal_weights[seg_idx] = 1
         else:
             ac_causal_weights[seg_idx] = torch.exp(
-                -causal_configs["eps_ac"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
+                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
             ch_causal_weights[seg_idx] = torch.exp(
-                -causal_configs["eps_ch"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
+                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
 
-    if torch.min(ac_causal_weights) > causal_configs["delta"]:
-        causal_configs["eps_ac"] *= 10
+    if ac_causal_weights[-1] > causal_configs["min_thresh"] \
+    and ch_causal_weights[-1] > causal_configs["min_thresh"]:
+        causal_configs["eps"] *= causal_configs["step"]
         print(f"epoch {epoch}: "
-              f"update eps_ac to {causal_configs['eps_ac']:.2e}")
-    if torch.min(ch_causal_weights) > causal_configs["delta"]:
-        causal_configs["eps_ch"] *= 10
+              f"increase eps to {causal_configs['eps']:.2e}")
+    if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+    or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+        causal_configs["eps"] /= causal_configs["step"]
         print(f"epoch {epoch}: "
-              f"update eps_ch to {causal_configs['eps_ch']:.2e}")
+              f"decrease eps to {causal_configs['eps']:.2e}")
+    # if torch.min(ch_causal_weights) > causal_configs["delta"]:
+    #     causal_configs["eps_ch"] *= 2
+    #     print(f"epoch {epoch}: "
+    #           f"update eps_ch to {causal_configs['eps_ch']:.2e}")
 
 
 
@@ -319,24 +326,21 @@ for epoch in range(EPOCHS):
               f"ac_weight {ac_weight:.2e}, ch_weight {ch_weight:.2e}, "
               f"bc_weight {bc_weight:.2e}, ic_weight {ic_weight:.2e}")
 
-        writer.add_scalar("Loss/ac_loss", ac_loss, epoch)
-        writer.add_scalar("Loss/ch_loss", ch_loss, epoch)
-        writer.add_scalar("Loss/bc_loss", bc_loss, epoch)
-        writer.add_scalar("Loss/ic_loss", ic_loss, epoch)
-        writer.add_scalar("Weight/ac_weight", ac_weight, epoch)
-        writer.add_scalar("Weight/ch_weight", ch_weight, epoch)
-        writer.add_scalar("Weight/bc_weight", bc_weight, epoch)
-        writer.add_scalar("Weight/ic_weight", ic_weight, epoch)
+        writer.add_scalar("loss/ac_loss", ac_loss, epoch)
+        writer.add_scalar("loss/ch_loss", ch_loss, epoch)
+        writer.add_scalar("loss/bc_loss", bc_loss, epoch)
+        writer.add_scalar("loss/ic_loss", ic_loss, epoch)
+        writer.add_scalar("weight/ac_weight", ac_weight, epoch)
+        writer.add_scalar("weight/ch_weight", ch_weight, epoch)
+        writer.add_scalar("weight/bc_weight", bc_weight, epoch)
+        writer.add_scalar("weight/ic_weight", ic_weight, epoch)
 
-        fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-        ax = axes[0]
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
         ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
-        ax.set_title(f"AC, Eposh: {epoch} "
-                     f"eps: {causal_configs['eps_ac']:.2e}")
-        ax = axes[1]
         ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
-        ax.set_title(f"CH, Eposh: {epoch} "
-                     f"eps: {causal_configs['eps_ch']:.2e}")
+        ax.set_title(f"Eposh: {epoch} "
+                     f"eps: {causal_configs['eps']:.2e}")
+        ax.legend(loc="upper right")
         # close the figure
         plt.close(fig)
         writer.add_figure("fig/causal_weights", fig, epoch)

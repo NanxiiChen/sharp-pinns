@@ -50,8 +50,9 @@ LOG_NAME = None
 ```ini
 
 [PARAM]
-ALPHA_PHI = 9.62e-5
-OMEGA_PHI = 1.663e7
+ALPHA_PHI = 1.03e-4
+OMEGA_PHI = 1.76e7
+MM = 7.94e-18
 DD = 8.5e-10
 AA = 5.35e7
 LP = 2.0
@@ -151,15 +152,15 @@ GEO_COEF = 1e4
 TIME_COEF = 1e-2
 TIME_SPAN = (0, 0.2)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
-NETWORK_SIZE = [48] + [64]*6 + [2]
-NUM_SEG = 5
+NETWORK_SIZE = [3] + [80]*4 + [2]
+NUM_SEG = 6
 
 MESH_POINTS = "./data/2d-2pits/mesh_points.npy"
 REF_PREFIX = "./data/2d-2pits/sol-"
 TARGET_TIMES = [0.00, 2.30, 10.75, 18.94]
 
 NTK_BATCH_SIZE = 100
-BREAK_INTERVAL = 100
+BREAK_INTERVAL = 500
 EPOCHS = 800000
 ALPHA = 1.0
 LR = 5e-4
@@ -169,8 +170,8 @@ BCDATA_SHAPE = 200
 ICDATA_SHAPE = 500
 SAMPLING_STRATEGY = ["grid_transition", "lhs", "lhs"]
 
-RAR_BASE_SHAPE = 30000
-RAR_SHAPE = 3000
+RAR_BASE_SHAPE = 50000
+RAR_SHAPE = 6000
 
 
 RESUME = None

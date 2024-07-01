@@ -82,11 +82,11 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
         self.spatial_high_embedding = FourierEmbedding(
             in_features-1,
             embedding_features,
-            std
+            std*10
         )
         self.temporal_embedding = FourierEmbedding(
             1, embedding_features,
-            std, method="linear"
+            std*5, method="linear"
         )
 
     def forward(self, x):
@@ -116,14 +116,12 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
 
 
 
-
-
 class PFPINN(torch.nn.Module):
     def __init__(
         self,
         sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=8,
+        embedding_features=16,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -133,12 +131,13 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
-        self.params = [p for p in list(self.parameters())[:-1] if p.requires_grad]
+        
         # self.embedding = FourierEmbedding(DIM, embedding_features)
-        self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        # self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.spatial_embedding = FourierEmbedding(DIM, embedding_features, std=1, method="trig").to(self.device)
         # self.temporal_embedding = FourierEmbedding(1, embedding_features, std=1, method="trig").to(self.device)
         # self.out_layer = torch.nn.Linear(sizes[-1], 2).to(self.device)
+        # self.out_layer = torch.nn.Linear(self.sizes[-1], 2).to(self.device)
 
     def auto_grad(self, up, down):
         return torch.autograd.grad(inputs=down, outputs=up,
@@ -149,10 +148,6 @@ class PFPINN(torch.nn.Module):
 
     def make_layers(self):
         layers = []
-        
-        # embedding_layer = FourierEmbedding(DIM+1, self.embedding_features)
-        # layers.append(("embedding", embedding_layer))
-        
         for i in range(len(self.sizes) - 1):
 
             linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
@@ -163,15 +158,14 @@ class PFPINN(torch.nn.Module):
         return OrderedDict(layers)
 
     def forward(self, x):
-        x = self.embedding(x)
         # y_spatial = self.spatial_embedding(x[:, :-1])
         # y_temporal = self.temporal_embedding(x[:, -1:])
         # out_spatial = self.model(y_spatial)
         # out_temporal = self.model(y_temporal)
-        # merge by pointwise multiplication
+        # # merge by pointwise multiplication
         # out = self.out_layer(out_spatial * out_temporal)
-        # return x
-        
+        # return out
+        # x = self.embedding(x)
         return self.model(x)
 
     def net_u(self, x):
@@ -233,7 +227,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt + LP * (df_dphi - ALPHA_PHI * nabla2phi)
         ch = dc_dt - DD / 2 / AA * nabla2_df_dc
 
-        return [ac, ch]
+        return [ac/1e9, ch]
     
     # def net_pde(self, geotime):
     #     # compute the pde residual
@@ -323,11 +317,12 @@ class PFPINN(torch.nn.Module):
             raise ValueError("method must be one of 'rar' or 'gar'")
         return base_data[idxs].to(self.device)
 
-    def compute_jacobian(self, output, mini_batch=True):
+    def compute_jacobian(self, output, mini_batch=False):
+        params = [p for p in list(self.parameters())[:-1] if p.requires_grad]
         output = output.reshape(-1)
         
         if not mini_batch:
-            grads = torch.autograd.grad(output, self.params,
+            grads = torch.autograd.grad(output, params,
                                         (torch.eye(output.shape[0])
                                             .to(self.device),),
                                         is_grads_batched=True, retain_graph=True)
@@ -338,7 +333,7 @@ class PFPINN(torch.nn.Module):
             grads = []
             for i in range(0, output.shape[0], batch_size):
                 output_batch = output[i:min(i + batch_size, output.shape[0])]
-                grad_batch = torch.autograd.grad(output_batch, self.params,
+                grad_batch = torch.autograd.grad(output_batch, params,
                                                  (torch.eye(output_batch.shape[0])
                                                   .to(self.device),),
                                                  is_grads_batched=True, retain_graph=True)
@@ -541,6 +536,7 @@ class PFPINN(torch.nn.Module):
             self.zero_grad()
             grad = self.gradient(loss)
             grads[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
+            # grads[idx] = torch.mean(torch.abs(grad)).item()
             # grads[idx] = torch.max(torch.abs(grad)).item()
 
         return np.sum(grads) / grads
