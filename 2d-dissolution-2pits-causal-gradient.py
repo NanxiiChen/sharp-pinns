@@ -256,7 +256,7 @@ for epoch in range(EPOCHS):
         # writer.add_figure("sampling", fig, epoch)
 
 
-    ac_residual, ch_residual = net.net_pde(data)
+    # ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
 
@@ -312,12 +312,13 @@ for epoch in range(EPOCHS):
                 raise ValueError("NaN weight")
 
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
-        bc_weight * bc_loss + ic_weight * ic_loss * 100
+        bc_weight * bc_loss + ic_weight * ic_loss
 
 
     opt.zero_grad()
     losses.backward()
     opt.step()
+    scheduler.step()
     
     
     if epoch % BREAK_INTERVAL == 0:

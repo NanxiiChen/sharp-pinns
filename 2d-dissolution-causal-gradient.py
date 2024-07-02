@@ -199,7 +199,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=50000, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -214,14 +214,14 @@ for epoch in range(EPOCHS):
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
-        # geotime = geotime.to(net.device)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
+        geotime = geotime.to(net.device)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
         # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
+        data = torch.cat([geotime, anchors],
+                         dim=0).detach().requires_grad_(True)
         data = geotime.requires_grad_(True)
 
         # shuffle
@@ -233,13 +233,13 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        writer.add_figure("sampling", fig, epoch)
 
 
-    ac_residual, ch_residual = net.net_pde(data)
+    # ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
 
@@ -260,25 +260,21 @@ for epoch in range(EPOCHS):
             ch_causal_weights[seg_idx] = 1
         else:
             ac_causal_weights[seg_idx] = torch.exp(
-                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
+                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).item()
             ch_causal_weights[seg_idx] = torch.exp(
-                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
+                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
 
     if ac_causal_weights[-1] > causal_configs["min_thresh"] \
-    and ch_causal_weights[-1] > causal_configs["min_thresh"]:
+        and ch_causal_weights[-1] > causal_configs["min_thresh"]:
         causal_configs["eps"] *= causal_configs["step"]
         print(f"epoch {epoch}: "
               f"increase eps to {causal_configs['eps']:.2e}")
+        
     if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-    or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+        or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
         causal_configs["eps"] /= causal_configs["step"]
         print(f"epoch {epoch}: "
               f"decrease eps to {causal_configs['eps']:.2e}")
-    # if torch.min(ch_causal_weights) > causal_configs["delta"]:
-    #     causal_configs["eps_ch"] *= 2
-    #     print(f"epoch {epoch}: "
-    #           f"update eps_ch to {causal_configs['eps_ch']:.2e}")
-
 
 
     ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
@@ -295,12 +291,13 @@ for epoch in range(EPOCHS):
                 raise ValueError("NaN weight")
 
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
-        bc_weight * bc_loss + ic_weight * ic_loss * 100
+        bc_weight * bc_loss + ic_weight * ic_loss
 
 
     opt.zero_grad()
     losses.backward()
     opt.step()
+    scheduler.step()
     
     
     if epoch % BREAK_INTERVAL == 0:
