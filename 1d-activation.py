@@ -222,27 +222,12 @@ for epoch in range(EPOCHS):
     bc_forward = net.net_u(bcdata)  
     ic_forward = net.net_u(icdata)
     
-    # ac_residual, ch_residual = net.net_pde(data)
-    # ac_loss = criteria(ac_residual, torch.zeros_like(ac_residual))
-    # ch_loss = criteria(ch_residual, torch.zeros_like(ch_residual))
-    # bc_forward = net.net_u(bcdata)
-    # bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
-    # ic_forward = net.net_u(icdata)
-    # ic_loss = criteria(ic_forward, ic_func(icdata).detach())
-
     if epoch % BREAK_INTERVAL == 0:
 
         ac_weight, ch_weight, bc_weight, ic_weight = \
             net.compute_ntk_weight(
                 [ac_residual, ch_residual, bc_forward, ic_forward],
                 method=config.get("TRAIN", "NTK_MODE").strip('"'),
-                batch_size=NTK_BATCH_SIZE
-            )
-
-        ac_weight, ch_weight, bc_weight, ic_weight = \
-            net.compute_ntk_weight(
-                [ac_residual, ch_residual, bc_forward, ic_forward],
-                method="random",
                 batch_size=NTK_BATCH_SIZE
             )
 

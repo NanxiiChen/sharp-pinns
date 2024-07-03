@@ -15,7 +15,7 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 
 
-now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "2pits-FFE-ntk+" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 
 
@@ -260,14 +260,14 @@ for epoch in range(EPOCHS):
     bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
 
 
-
     losses = ic_loss_weighted \
         + bc_loss_weighted \
         + ac_loss_weighted \
         + ch_loss_weighted
 
     if epoch % (BREAK_INTERVAL) == 0:
-        writer.add_scalar("loss/total", losses, epoch)
+        writer.add_scalar("loss/total", 
+                          losses, epoch)
         writer.add_scalar("loss/ac_loss",
                           ac_loss_weighted, epoch)
         writer.add_scalar("loss/ch_loss",

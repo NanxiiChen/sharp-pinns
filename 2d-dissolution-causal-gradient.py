@@ -15,9 +15,10 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 
 
-now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+# now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "causal+gradient"
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
-writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
+# writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
 
 class GeoTimeSampler:
@@ -164,7 +165,7 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-6,
+    "eps": 1e-9,
     "min_thresh": 0.99,
     "step": 1.5,
     "mean_thresh": 0.6
@@ -199,7 +200,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -215,13 +216,13 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-                                        method=method)
+        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+        #                                 method=method)
         # net.train()
-        data = torch.cat([geotime, anchors],
-                         dim=0).detach().requires_grad_(True)
+        # data = torch.cat([geotime, anchors],
+        #                  dim=0).detach().requires_grad_(True)
         data = geotime.requires_grad_(True)
 
         # shuffle
@@ -233,10 +234,10 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        writer.add_figure("sampling", fig, epoch)
+        # writer.add_figure("sampling", fig, epoch)
 
 
     # ac_residual, ch_residual = net.net_pde(data)
@@ -318,7 +319,7 @@ for epoch in range(EPOCHS):
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
         ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
         ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
-        ax.set_title(f"Eposh: {epoch} "
+        ax.set_title(f"epoch: {epoch} "
                      f"eps: {causal_configs['eps']:.2e}")
         ax.legend(loc="upper right")
         # close the figure

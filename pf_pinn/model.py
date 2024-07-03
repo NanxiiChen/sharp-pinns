@@ -86,7 +86,7 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
         )
         self.temporal_embedding = FourierEmbedding(
             1, embedding_features,
-            std*5, method="linear"
+            std*5,
         )
 
     def forward(self, x):
@@ -121,7 +121,7 @@ class PFPINN(torch.nn.Module):
         self,
         sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=16,
+        embedding_features=8,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -151,7 +151,7 @@ class PFPINN(torch.nn.Module):
         for i in range(len(self.sizes) - 1):
 
             linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
-            torch.nn.init.xavier_uniform_(linear_layer.weight)
+            torch.nn.init.xavier_normal_(linear_layer.weight)
             layers.append((f"linear{i}", linear_layer))
             if i != len(self.sizes) - 2:
                 layers.append((f"act{i}", self.act()))
@@ -185,105 +185,103 @@ class PFPINN(torch.nn.Module):
             return torch.cat([dev_phi[:, 0:1], dev_c[:, 0:1]], dim=1)
 
 
-    # def net_pde(self, geotime):
-    #     # compute the pde residual
-    #     # geo: x/y, t
-    #     # sol: phi, c
-    #     geotime = geotime.detach().requires_grad_(True).to(self.device)
-    #     sol = self.net_u(geotime)
-
-    #     dphi_dgeotime = self.auto_grad(sol[:, 0:1], geotime)
-    #     dc_dgeotime = self.auto_grad(sol[:, 1:2], geotime)
-
-    #     dphi_dt = dphi_dgeotime[:, -1:] * TIME_COEF
-    #     dc_dt = dc_dgeotime[:, -1:] * TIME_COEF
-
-    #     dphi_dgeo = dphi_dgeotime[:, :-1] * GEO_COEF
-    #     dc_dgeo = dc_dgeotime[:, :-1] * GEO_COEF
-
-    #     nabla2phi = torch.zeros_like(dphi_dgeo[:, 0:1])
-    #     for i in range(geotime.shape[1]-1):
-    #         nabla2phi += self.auto_grad(dphi_dgeo[:, i:i+1],
-    #                                     geotime)[:, i:i+1] * GEO_COEF
-
-    #     nabla2c = torch.zeros_like(dphi_dgeo[:, 0:1])
-    #     for i in range(geotime.shape[1]-1):
-    #         nabla2c += self.auto_grad(dc_dgeo[:, i:i+1],
-    #                                   geotime)[:, i:i+1] * GEO_COEF
-
-    #     df_dphi = 12 * AA * (CSE - CLE) * sol[:, 0:1] * (sol[:, 0:1] - 1) * \
-    #         (sol[:, 1:2] - (CSE - CLE) * (-2 * sol[:, 0:1]**3 + 3 * sol[:, 0:1]**2) - CLE) \
-    #         + 2*OMEGA_PHI*sol[:, 0:1]*(sol[:, 0:1] - 1)*(2 * sol[:, 0:1] - 1)
-
-    #     nabla2_df_dc = 2 * AA * (
-    #         nabla2c
-    #         + 6 * (CSE - CLE) * (
-    #             sol[:, 0:1] * (sol[:, 0:1] - 1) * nabla2phi
-    #             + (2*sol[:, 0:1] - 1) *
-    #             torch.sum(dphi_dgeo ** 2, dim=1, keepdim=True)
-    #         )
-    #     )
-
-    #     ac = dphi_dt + LP * (df_dphi - ALPHA_PHI * nabla2phi)
-    #     ch = dc_dt - DD / 2 / AA * nabla2_df_dc
-
-    #     return [ac/1e12, ch * 1e3]
-    
     def net_pde(self, geotime):
         # compute the pde residual
-        # geo: x/y, t
+        # geo: x, y, t
         # sol: phi, c
-        
-
-        AC1 = 2 * AA * LP / TIME_COEF
-        AC2 = LP * OMEGA_PHI / TIME_COEF
-        AC3 = LP * ALPHA_PHI * GEO_COEF ** 2 / TIME_COEF
-        CH1 = 2 * AA * MM * GEO_COEF ** 2 / TIME_COEF
-        
-        
         geotime = geotime.detach().requires_grad_(True).to(self.device)
         sol = self.net_u(geotime)
 
         dphi_dgeotime = self.auto_grad(sol[:, 0:1], geotime)
         dc_dgeotime = self.auto_grad(sol[:, 1:2], geotime)
 
-        dphi_dt = dphi_dgeotime[:, -1:]
-        dc_dt = dc_dgeotime[:, -1:]
+        dphi_dt = dphi_dgeotime[:, -1:] * TIME_COEF
+        dc_dt = dc_dgeotime[:, -1:] * TIME_COEF
 
-        dphi_dgeo = dphi_dgeotime[:, :-1]
-        dc_dgeo = dc_dgeotime[:, :-1]
+        dphi_dgeo = dphi_dgeotime[:, :-1] * GEO_COEF
+        dc_dgeo = dc_dgeotime[:, :-1] * GEO_COEF
 
         nabla2phi = torch.zeros_like(dphi_dgeo[:, 0:1])
         for i in range(geotime.shape[1]-1):
             nabla2phi += self.auto_grad(dphi_dgeo[:, i:i+1],
-                                        geotime)[:, i:i+1]
+                                        geotime)[:, i:i+1] * GEO_COEF
 
         nabla2c = torch.zeros_like(dphi_dgeo[:, 0:1])
         for i in range(geotime.shape[1]-1):
             nabla2c += self.auto_grad(dc_dgeo[:, i:i+1],
-                                      geotime)[:, i:i+1]
-        
-        h_phi = -2 * sol[:, 0:1] ** 3 + 3 * sol[:, 0:1] ** 2
-        # g_phi = sol[:, 0:1] ** 2 * (sol[:, 0:1] - 1) ** 2
-        dh_dphi = -6 * sol[:, 0:1] ** 2 + 6 * sol[:, 0:1]
-        # d2h_dphi2 = -12 * sol[:, 0:1] + 6
-        dg_dphi = 4 * sol[:, 0:1] ** 3 - 6 * sol[:, 0:1] ** 2 + 2 * sol[:, 0:1]
-        # nabla_h_phi = dh_dphi * dphi_dgeo
-        # nabla2_h_phi = dh_dphi * nabla2phi + d2h_dphi2 * torch.sum(dphi_dgeo ** 2, dim=1, keepdim=True)
-        nabla2_h_phi = 6 * (
-            sol[:, 0:1] * (1 -  sol[:, 0:1]) * nabla2phi
-            + (1 - 2 * sol[:, 0:1]) * torch.sum(dphi_dgeo ** 2, dim=1, keepdim=True)
+                                      geotime)[:, i:i+1] * GEO_COEF
+
+        df_dphi = 12 * AA * (CSE - CLE) * sol[:, 0:1] * (sol[:, 0:1] - 1) * \
+            (sol[:, 1:2] - (CSE - CLE) * (-2 * sol[:, 0:1]**3 + 3 * sol[:, 0:1]**2) - CLE) \
+            + 2*OMEGA_PHI*sol[:, 0:1]*(sol[:, 0:1] - 1)*(2 * sol[:, 0:1] - 1)
+
+        nabla2_df_dc = 2 * AA * (
+            nabla2c
+            + 6 * (CSE - CLE) * (
+                sol[:, 0:1] * (sol[:, 0:1] - 1) * nabla2phi
+                + (2*sol[:, 0:1] - 1) *
+                torch.sum(dphi_dgeo**2, dim=1, keepdim=True)
+            )
         )
+
+        ac = dphi_dt + LP * (df_dphi - ALPHA_PHI * nabla2phi)
+        ch = dc_dt - DD / 2 / AA * nabla2_df_dc
+
+        return [ac/1e8, ch]
+    
+    # def net_pde(self, geotime):
+    #     # compute the pde residual
+    #     # geo: x/y, t
+    #     # sol: phi, c
+        
+
+    #     AC1 = 2 * AA * LP / TIME_COEF
+    #     AC2 = LP * OMEGA_PHI / TIME_COEF
+    #     AC3 = LP * ALPHA_PHI * GEO_COEF**2 / TIME_COEF
+    #     CH1 = 2 * AA * MM * GEO_COEF**2 / TIME_COEF
+        
+        
+    #     geotime = geotime.detach().requires_grad_(True).to(self.device)
+    #     sol = self.net_u(geotime)
+
+    #     dphi_dgeotime = self.auto_grad(sol[:, 0:1], geotime)
+    #     dc_dgeotime = self.auto_grad(sol[:, 1:2], geotime)
+
+    #     dphi_dt = dphi_dgeotime[:, -1:]
+    #     dc_dt = dc_dgeotime[:, -1:]
+
+    #     dphi_dgeo = dphi_dgeotime[:, :-1]
+    #     dc_dgeo = dc_dgeotime[:, :-1]
+
+    #     nabla2phi = torch.zeros_like(dphi_dgeo[:, 0:1])
+    #     for i in range(geotime.shape[1]-1):
+    #         nabla2phi += self.auto_grad(dphi_dgeo[:, i:i+1],
+    #                                     geotime)[:, i:i+1]
+
+    #     nabla2c = torch.zeros_like(dphi_dgeo[:, 0:1])
+    #     for i in range(geotime.shape[1]-1):
+    #         nabla2c += self.auto_grad(dc_dgeo[:, i:i+1],
+    #                                   geotime)[:, i:i+1]
+        
+    #     h_phi = -2 * sol[:, 0:1]**3 + 3 * sol[:, 0:1]**2
+    #     # g_phi = sol[:, 0:1]**2 * (sol[:, 0:1] - 1)**2
+    #     dh_dphi = -6 * sol[:, 0:1]**2 + 6 * sol[:, 0:1]
+    #     # d2h_dphi2 = -12 * sol[:, 0:1] + 6
+    #     dg_dphi = 4 * sol[:, 0:1]**3 - 6 * sol[:, 0:1]**2 + 2 * sol[:, 0:1]
+    #     # nabla_h_phi = dh_dphi * dphi_dgeo
+    #     # nabla2_h_phi = dh_dphi * nabla2phi + d2h_dphi2 * torch.sum(dphi_dgeo**2, dim=1, keepdim=True)
+    #     nabla2_h_phi = 6 * (
+    #         sol[:, 0:1] * (1 -  sol[:, 0:1]) * nabla2phi
+    #         + (1 - 2 * sol[:, 0:1]) * torch.sum(dphi_dgeo**2, dim=1, keepdim=True)
+    #     )
 
         
             
-        ch = dc_dt - CH1 * nabla2c + CH1 * (CSE - CLE) * nabla2_h_phi
-        ac = dphi_dt \
-            - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
-            - AC2 * dg_dphi \
-            - AC3 * nabla2phi \
+    #     ch = dc_dt - CH1 * nabla2c + CH1 * (CSE - CLE) * nabla2_h_phi
+    #     ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
+    #         - AC2 * dg_dphi - AC3 * nabla2phi \
 
-        return [ac/1e9, ch]
+    #     return [ac, ch]
 
     def gradient(self, loss):
         # compute gradient of loss w.r.t. model parameters
@@ -396,7 +394,7 @@ class PFPINN(torch.nn.Module):
                               + f" at epoch {epoch}")
             # fig.legend()
 
-            acc = 1 - np.sqrt(np.mean(diff ** 2))
+            acc = 1 - np.sqrt(np.mean(diff**2))
 
         else:
 
@@ -424,7 +422,7 @@ class PFPINN(torch.nn.Module):
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
                                  title="error t = " + str(round(tic, 2)))
                 diffs.append(diff)
-            acc = 1 - np.sqrt(np.mean(np.array(diffs) ** 2))
+            acc = 1 - np.sqrt(np.mean(np.array(diffs)**2))
 
         return fig, axes, acc
 
@@ -477,7 +475,22 @@ class PFPINN(torch.nn.Module):
         else:
             raise ValueError("Only 2 or 3 dimensional data is supported")
         return fig, ax
-
+    
+    def compute_ntk_diag(self, residuals, batch_size):
+        diags = []
+        for res in residuals:
+            if batch_size < len(res):
+                jac = self.compute_jacobian(res[
+                    np.random.randint(0, len(res), batch_size)
+                ])
+                diag = self.compute_ntk(jac, compute='diag')
+            else:
+                jac = self.compute_jacobian(res)
+                diag = self.compute_ntk(jac, compute='diag')
+            diags.append(diag)
+        return diags
+                    
+                    
     def compute_ntk_weight(self, residuals, method, batch_size, return_ntk_info=False):
         # compute the weight of each loss term using ntk-based method
         traces = []
@@ -527,9 +540,9 @@ class PFPINN(torch.nn.Module):
 
         traces = np.array(traces)
         if return_ntk_info:
-            return traces.sum() / traces, jacs
-        # return traces.sum() / traces / np.sqrt(np.sum(traces ** 2) * len(traces))
-        return traces.sum() / traces
+            return traces.sum() / traces, jacs, traces
+        return traces.sum() / traces / np.sqrt(np.sum(traces**2) * len(traces))
+        # return traces.sum() / traces
 
     def compute_gradient_weight(self, losses):
 
@@ -539,7 +552,7 @@ class PFPINN(torch.nn.Module):
             # zero_grad
             self.zero_grad()
             grad = self.gradient(loss)
-            grads[idx] = torch.sqrt(torch.sum(grad ** 2)).item()
+            grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
             # grads[idx] = torch.mean(torch.abs(grad)).item()
             # grads[idx] = torch.max(torch.abs(grad)).item()
 

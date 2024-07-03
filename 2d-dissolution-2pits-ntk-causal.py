@@ -326,7 +326,7 @@ for epoch in range(EPOCHS):
         ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
         ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
         ax.legend()
-        ax.set_title(f"Eposh: {epoch} "
+        ax.set_title(f"epoch: {epoch} "
                     f"eps: {causal_configs['eps']:.2e}")
         writer.add_figure("causal_weights", fig, epoch)
         # close the figure to save memory

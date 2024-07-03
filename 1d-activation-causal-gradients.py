@@ -9,23 +9,25 @@ import numpy as np
 import torch
 import datetime
 import matplotlib
+import time
 matplotlib.use("Agg")
 
 config = configparser.ConfigParser()
 config.read("config.ini")
 
-
-# now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-now = "2pits-causal-gradient-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+LOG_NAME = config.get("TRAIN", "LOG_NAME").strip('"')
+now = LOG_NAME
+if LOG_NAME == "None":
+    now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    # now = "fourier-feather"
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
-save_root = "/root/tf-logs"
 
 
-
+# Define the sampler
 class GeoTimeSampler:
     def __init__(
         self,
-        geo_span: list,  # 2d
+        geo_span: list,  # 1d
         time_span: list,
     ):
         self.geo_span = geo_span
@@ -46,88 +48,61 @@ class GeoTimeSampler:
             func = pfp.make_uniform_grid_data_transition
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-                       maxs=[self.geo_span[0][1], self.geo_span[1]
-                             [1], self.time_span[1]],
+        geotime = func(mins=[self.geo_span[0], self.time_span[0]],
+                       maxs=[self.geo_span[1], self.time_span[1]],
                        num=in_num)
 
         return geotime.float().requires_grad_(True)
 
-    # TODO: bc
-    def bc_sample(self, bc_num: int, strategy: str = "lhs", xspan=[-0.025, 0.025]):
-        # 四条边，顺着时间变成四个面
+    def bc_sample(self, bc_num, strategy: str = "lhs",):
         if strategy == "lhs":
-            func = pfp.make_lhs_sampling_data
+            ts = (lhs(1, bc_num) *
+                  (self.time_span[1] - self.time_span[0]) + self.time_span[0]).reshape(-1, 1)
         elif strategy == "grid":
-            func = pfp.make_uniform_grid_data
+            ts = np.linspace(self.time_span[0], self.time_span[1], bc_num)[
+                1:-1].reshape(-1, 1)
         elif strategy == "grid_transition":
-            func = pfp.make_uniform_grid_data_transition
+            ts = np.linspace(self.time_span[0], self.time_span[1], bc_num)[
+                1:-1].reshape(-1, 1)
+            distance = (self.time_span[1] - self.time_span[0]) / (bc_num - 1)
+            shift = np.random.uniform(-distance, distance, 1)
+            ts = np.clip(ts + shift, self.time_span[0], self.time_span[1])
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
-                                          maxs=[0.025, 0.025,
-                                                self.time_span[1]],
-                                          num=bc_num)
-        xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
-        xyts_left = xyts.clone()
-        xyts_left[:, 0:1] -= 0.15
-        xyts_right = xyts.clone()
-        xyts_right[:, 0:1] += 0.15
+        xt_l = np.hstack([np.full(ts.shape[0], self.geo_span[0]).reshape(-1, 1),
+                          ts.reshape(-1, 1)])
+        xt_r = np.hstack([np.full(ts.shape[0], self.geo_span[1]).reshape(-1, 1),
+                          ts.reshape(-1, 1)])
+        xts = np.vstack([xt_l, xt_r])
+        return torch.from_numpy(xts).float().requires_grad_(True)
 
-        xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
-                   maxs=[self.geo_span[0][1], self.time_span[1]],
-                   num=bc_num)
-        top = torch.cat([xts[:, 0:1], 
-                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
-                        xts[:, 1:2]], dim=1)  # 顶边
-
-        yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
-                   maxs=[self.geo_span[1][1], self.time_span[1]],
-                   num=bc_num)
-        
-        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=yts.device), 
-                        yts[:, 0:1], 
-                        yts[:, 1:2]], dim=1)  # 左边
-
-        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=yts.device), 
-                        yts[:, 0:1], 
-                        yts[:, 1:2]], dim=1)  # 右边
-
-        xyts = torch.cat([xyts_left, xyts_right, top, left, right], dim=0)
-
-        return xyts.float().requires_grad_(True)
-
-    def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[[-0.1, 0.1], [0, 0.1]]):
+    def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[-0.1, 0.1]):
         if strategy == "lhs":
-            xys = pfp.make_lhs_sampling_data(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                             maxs=[self.geo_span[0][1],
-                                                   self.geo_span[1][1]],
-                                             num=ic_num)
-
+            xs = (lhs(1, ic_num) *
+                  (self.geo_span[1] - self.geo_span[0]) + self.geo_span[0]).reshape(-1, 1)
+            xs_local = (lhs(1, ic_num) *
+                        (local_area[1] - local_area[0]) + local_area[0]).reshape(-1, 1)
         elif strategy == "grid":
-            xys = pfp.make_uniform_grid_data(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                             maxs=[self.geo_span[0][1],
-                                                   self.geo_span[1][1]],
-                                             num=ic_num)
+            xs = np.linspace(self.geo_span[0], self.geo_span[1], ic_num)[
+                1:-1].reshape(-1, 1)
+            xs_local = np.linspace(local_area[0], local_area[1], ic_num)[
+                1:-1].reshape(-1, 1)
         elif strategy == "grid_transition":
-            xys = pfp.make_uniform_grid_data_transition(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                                        maxs=[self.geo_span[0][1], self.geo_span[1][1]],
-                                                        num=ic_num)
+            xs = np.linspace(self.geo_span[0], self.geo_span[1], ic_num)[
+                1:-1].reshape(-1, 1)
+            xs_local = np.linspace(local_area[0], local_area[1], ic_num)[
+                1:-1].reshape(-1, 1)
+            distance = (self.geo_span[1] - self.geo_span[0]) / (ic_num - 1)
+            shift = np.random.uniform(-distance, distance, 1)
+            xs = np.clip(xs + shift, self.geo_span[0], self.geo_span[1])
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_semi_circle_data(radius=0.1,
-                                              num=ic_num*2,
-                                              center=[0, 0.])
-        xys_local_left = xys_local.clone()
-        xys_local_left[:, 0:1] -= 0.15
-        xys_local_right = xys_local.clone()
-        xys_local_right[:, 0:1] += 0.15
-        xys = torch.cat([xys, xys_local_left, xys_local_right], dim=0)  # 垂直堆叠
-        xyts = torch.cat([xys, 
-                          torch.full((xys.shape[0], 1), 
-                                     self.time_span[0], device=xys.device)], dim=1)  # 水平堆叠
-        return xyts.float().requires_grad_(True)
+        xs = np.vstack([xs, xs_local])
+        xts = np.hstack(
+            [xs, np.full(xs.shape[0], self.time_span[0]).reshape(-1, 1)])
+
+        return torch.from_numpy(xts).float().requires_grad_(True)
 
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
@@ -147,8 +122,12 @@ except:
     pass
 
 
+ref_sol = pd.read_csv(config.get("TRAIN", "REF_PATH").strip('"'))
+
 TIME_COEF = config.getfloat("TRAIN", "TIME_COEF")
 GEO_COEF = config.getfloat("TRAIN", "GEO_COEF")
+ref_sol["x"] = ref_sol["x"].apply(lambda x: x * GEO_COEF)
+ref_sol["t"] = ref_sol["t"].apply(lambda t: t * TIME_COEF)
 
 
 ic_weight = 1
@@ -161,6 +140,7 @@ BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
 EPOCHS = config.getint("TRAIN", "EPOCHS")
 ALPHA = config.getfloat("TRAIN", "ALPHA")
 LR = config.getfloat("TRAIN", "LR")
+num_seg = config.getint("TRAIN", "NUM_SEG")
 
 ALPHA_PHI = config.getfloat("PARAM", "ALPHA_PHI")
 OMEGA_PHI = config.getfloat("PARAM", "OMEGA_PHI")
@@ -169,39 +149,27 @@ AA = config.getfloat("PARAM", "AA")
 LP = config.getfloat("PARAM", "LP")
 CSE = config.getfloat("PARAM", "CSE")
 CLE = eval(config.get("PARAM", "CLE"))
-MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
-
-num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-12,
+    "eps": 1e-9,
     "min_thresh": 0.99,
-    "step": 2,
-    "mean_thresh": 0.5
+    "step": 1.5,
+    "mean_thresh": 0.6
 }
 
 
-def ic_func(xts):
-    # r = torch.min(
-    #     torch.sqrt((xts[:, 0:1] - 0.15)**2 + xts[:, 1:2]**2),
-    #     torch.sqrt((xts[:, 0:1] + 0.15)**2 + xts[:, 1:2]**2)
-    # ).detach()
-    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
-                   + xts[:, 1:2]**2).detach()
-    with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
-        h_phi = -2 * phi**3 + 3 * phi**2
-        c = h_phi * CSE
-    return torch.cat([phi, c], dim=1)
-
-
 def bc_func(xts):
-    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
-                   + xts[:, 1:2]**2).detach()
     with torch.no_grad():
-        phi = (r > 0.05).float()
-        c = phi.detach()
+        val = (0.5 - xts[:, 0:1])
+    return torch.cat([val, val], dim=1)
+
+
+def ic_func(xts):
+    with torch.no_grad():
+        phi = (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
+                              torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * xts[:, 0:1] / GEO_COEF)) / 2
+        h_phi = -2 * phi**3 + 3 * phi**2
+        c = h_phi * CSE + (1 - h_phi) * 0.0
     return torch.cat([phi, c], dim=1)
 
 
@@ -217,7 +185,6 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=25000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -237,9 +204,10 @@ for epoch in range(EPOCHS):
         method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
         anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
                                         method=method)
-        net.train()
+        # net.train()
         data = torch.cat([geotime, anchors],
                          dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]
@@ -250,18 +218,18 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        writer.add_figure("sampling", fig, epoch)
 
-
-    bc_forward = net.net_u(bcdata)
+    # ac_residual, ch_residual = net.net_pde(data)
+    bc_forward = net.net_u(bcdata)  
     ic_forward = net.net_u(icdata)
-
+    
     ac_seg_loss = torch.zeros(num_seg, device=net.device)
     ch_seg_loss = torch.zeros(num_seg, device=net.device)
-
+    
     for seg_idx, data_idx in enumerate(indices):
         ac_residual, ch_residual = net.net_pde(data[data_idx])
         ac_seg_loss[seg_idx] = torch.mean(ac_residual**2)
@@ -276,15 +244,16 @@ for epoch in range(EPOCHS):
             ch_causal_weights[seg_idx] = 1
         else:
             ac_causal_weights[seg_idx] = torch.exp(
-                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
+                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).item()
             ch_causal_weights[seg_idx] = torch.exp(
-                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
+                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
 
     if ac_causal_weights[-1] > causal_configs["min_thresh"] \
         and ch_causal_weights[-1] > causal_configs["min_thresh"]:
         causal_configs["eps"] *= causal_configs["step"]
         print(f"epoch {epoch}: "
               f"increase eps to {causal_configs['eps']:.2e}")
+        
     if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
         causal_configs["eps"] /= causal_configs["step"]
@@ -292,12 +261,12 @@ for epoch in range(EPOCHS):
               f"decrease eps to {causal_configs['eps']:.2e}")
 
 
-
     ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
     ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
-
+    
+    
     if epoch % BREAK_INTERVAL == 0:
         ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
             [ac_loss, ch_loss, bc_loss, ic_loss],)
@@ -308,14 +277,12 @@ for epoch in range(EPOCHS):
 
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + ic_weight * ic_loss
-
-
+    
+    
     opt.zero_grad()
     losses.backward()
     opt.step()
-    scheduler.step()
-    
-    
+
     if epoch % BREAK_INTERVAL == 0:
         print(f"epoch {epoch}: ac_loss {ac_loss:.2e}, ch_loss {ch_loss:.2e}, "
               f"bc_loss {bc_loss:.2e}, ic_loss {ic_loss:.2e}, "
@@ -341,15 +308,11 @@ for epoch in range(EPOCHS):
         plt.close(fig)
         writer.add_figure("fig/causal_weights", fig, epoch)
         
-        TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
 
-        REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
-
-        fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
-                                        mesh_points=MESH_POINTS,
-                                        ref_prefix=REF_PREFIX)
+        fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
         
-        torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
+        torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
         plt.close(fig)
+    
