@@ -227,7 +227,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt + LP * (df_dphi - ALPHA_PHI * nabla2phi)
         ch = dc_dt - DD / 2 / AA * nabla2_df_dc
 
-        return [ac/1e8, ch]
+        return [ac/1e3, ch/1e3]
     
     # def net_pde(self, geotime):
     #     # compute the pde residual
