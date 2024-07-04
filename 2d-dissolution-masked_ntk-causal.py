@@ -15,7 +15,7 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 
 
-now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "2pits-masked-ntk-causal-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 
 
@@ -50,6 +50,7 @@ class GeoTimeSampler:
 
         return geotime.float().requires_grad_(True)
 
+    # TODO: bc
     def bc_sample(self, bc_num: int, strategy: str = "lhs", xspan=[-0.025, 0.025]):
         # 四条边，顺着时间变成四个面
         if strategy == "lhs":
@@ -123,7 +124,7 @@ time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
     sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
-    act=torch.nn.Tanh
+    act=torch.nn.GELU
 )
 
 resume = config.get("TRAIN", "RESUME").strip('"')
@@ -152,12 +153,21 @@ LR = config.getfloat("TRAIN", "LR")
 
 ALPHA_PHI = config.getfloat("PARAM", "ALPHA_PHI")
 OMEGA_PHI = config.getfloat("PARAM", "OMEGA_PHI")
-DD = config.getfloat("PARAM", "DD")
 AA = config.getfloat("PARAM", "AA")
 LP = config.getfloat("PARAM", "LP")
 CSE = config.getfloat("PARAM", "CSE")
 CLE = eval(config.get("PARAM", "CLE"))
 MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
+
+num_seg = config.getint("TRAIN", "NUM_SEG")
+
+causal_configs = {
+    "eps": 1e-15,
+    "min_thresh": 0.99,
+    "step": 1.2,
+    "mean_thresh": 0.6
+}
+
 
 
 def ic_func(xts):
@@ -177,6 +187,16 @@ def bc_func(xts):
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
+def split_temporal_coords_into_segments(ts, time_span, num_seg):
+    # Split the temporal coordinates into segments
+    # Return the indexes of the temporal coordinates
+    ts = ts.cpu()
+    min_t, max_t = time_span
+    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    indices = torch.bucketize(ts, bins)
+    return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
+
+
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
 scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.9)
@@ -188,9 +208,9 @@ SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
-
 for epoch in range(EPOCHS):
     net.train()
+
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
@@ -206,6 +226,12 @@ for epoch in range(EPOCHS):
 
         # shuffle
         data = data[torch.randperm(len(data))]
+        indices = split_temporal_coords_into_segments(data[:, -1],
+                                                      time_span,
+                                                      num_seg)
+        indices_bc = split_temporal_coords_into_segments(bcdata[:, -1],
+                                                            time_span,
+                                                            num_seg)
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
@@ -223,18 +249,14 @@ for epoch in range(EPOCHS):
 
 
     if epoch % BREAK_INTERVAL == 0:
-
-        ac_weight, ch_weight, bc_weight, ic_weight = \
-            net.compute_ntk_weight(
+        
+        ac_diag, ch_diag, bc_diag, ic_diag = \
+            net.compute_ntk_diag(
                 [ac_residual, ch_residual, bc_forward, ic_forward],
-                method="random",
-                batch_size=NTK_BATCH_SIZE
+                batch_size=NTK_BATCH_SIZE,
+                method="mini"
             )
-
-        writer.add_scalar("weight/ic", ic_weight, epoch)
-        writer.add_scalar("weight/bc", bc_weight, epoch)
-        writer.add_scalar("weight/ac", ac_weight, epoch)
-        writer.add_scalar("weight/ch", ch_weight, epoch)
+        
 
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
 
@@ -248,12 +270,117 @@ for epoch in range(EPOCHS):
 
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
-    
+        
+    ac_seg_loss = torch.zeros(num_seg, device=net.device)
+    ch_seg_loss = torch.zeros(num_seg, device=net.device)
+    bc_seg_loss = torch.zeros(num_seg, device=net.device)
+    ic_seg_loss = 0
 
-    ac_loss_weighted = criteria(ac_residual, torch.zeros_like(ac_residual)) * ac_weight
-    ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
-    ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
-    bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
+
+    for seg_idx, data_idx in enumerate(indices):
+        ac_residual_seg = ac_residual[data_idx]
+        ch_residual_seg = ch_residual[data_idx]
+        bc_forward_seg = bc_forward[indices_bc[seg_idx]]
+        
+        ac_diag_seg = ac_diag[data_idx]
+        ch_diag_seg = ch_diag[data_idx]
+        bc_diag_seg = bc_diag[indices_bc[seg_idx]]
+        
+        ac_avg_trace_seg = torch.sum(ac_diag_seg) / len(ac_diag_seg)
+        ch_avg_trace_seg = torch.sum(ch_diag_seg) / len(ch_diag_seg)
+        bc_avg_trace_seg = torch.sum(bc_diag_seg) / len(bc_diag_seg)
+        
+        
+        
+        if seg_idx == 0:
+            ic_forward_seg = ic_forward
+            ic_diag_seg = ic_diag
+            ic_avg_trace_seg = torch.sum(ic_diag_seg) / len(ic_diag_seg)
+            
+            sum_avg_trace = ac_avg_trace_seg + ch_avg_trace_seg \
+                + bc_avg_trace_seg + ic_avg_trace_seg
+            
+            ac_weight_seg = sum_avg_trace / ac_avg_trace_seg
+            ch_weight_seg = sum_avg_trace / ch_avg_trace_seg
+            bc_weight_seg = sum_avg_trace / bc_avg_trace_seg
+            ic_weight_seg = sum_avg_trace / ic_avg_trace_seg
+
+            ic_seg_loss += criteria(ic_forward_seg,
+                                ic_func(icdata).detach()) * ic_weight_seg
+        else:
+            sum_avg_trace = ac_avg_trace_seg + ch_avg_trace_seg \
+                + bc_avg_trace_seg
+            ac_weight_seg = sum_avg_trace / ac_avg_trace_seg
+            ch_weight_seg = sum_avg_trace / ch_avg_trace_seg
+            bc_weight_seg = sum_avg_trace / bc_avg_trace_seg
+            
+
+        ac_seg_loss[seg_idx] = criteria(ac_residual_seg,
+                                        torch.zeros_like(ac_residual_seg)) * ac_weight_seg
+        ch_seg_loss[seg_idx] = criteria(ch_residual_seg,
+                                        torch.zeros_like(ch_residual_seg)) * ch_weight_seg
+        bc_seg_loss[seg_idx] = criteria(bc_forward_seg,
+                                        bc_func(bcdata[indices_bc[seg_idx]]).detach()) * bc_weight_seg
+
+
+    ac_causal_weights = torch.zeros(num_seg, device=net.device)
+    ch_causal_weights = torch.zeros(num_seg, device=net.device)
+    bc_causal_weights = torch.zeros(num_seg, device=net.device)
+    ic_causal_weights = 0
+    
+    for seg_idx in range(num_seg):
+        if seg_idx == 0:
+            ac_causal_weights[seg_idx] = 1
+            ch_causal_weights[seg_idx] = 1
+            bc_causal_weights[seg_idx] = 1
+            ic_causal_weights = 1
+            
+        else:
+            ac_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).item()
+            ch_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
+            bc_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(bc_seg_loss[:seg_idx])).item()
+
+
+    if ac_causal_weights[-1] > causal_configs["min_thresh"] \
+        and ch_causal_weights[-1] > causal_configs["min_thresh"] \
+        and bc_causal_weights[-1] > causal_configs["min_thresh"]:
+            
+        causal_configs["eps"] *= causal_configs["step"]
+        print(f"epoch {epoch}: "
+              f"increase eps to {causal_configs['eps']:.2e}")
+        
+    if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+        or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"] \
+        or torch.mean(bc_causal_weights) < causal_configs["mean_thresh"]:
+            
+        causal_configs["eps"] /= causal_configs["step"]
+        print(f"epoch {epoch}: "
+              f"decrease eps to {causal_configs['eps']:.2e}")
+
+    if epoch % (BREAK_INTERVAL) == 0:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
+        ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
+        ax.legend()
+        ax.set_title(f"epoch: {epoch} "
+                    f"eps: {causal_configs['eps']:.2e}")
+        writer.add_figure("causal_weights", fig, epoch)
+        # close the figure to save memory
+        plt.close(fig)
+
+    ac_loss_weighted = torch.sum(ac_causal_weights * ac_seg_loss)
+    ch_loss_weighted = torch.sum(ch_causal_weights * ch_seg_loss)
+    bc_loss_weighted = torch.sum(bc_causal_weights * bc_seg_loss)
+    ic_loss_weighted = ic_causal_weights * ic_seg_loss
+
+    # ac_loss_weighted = criteria(ac_residual, torch.zeros_like(ac_residual)) * ac_weight
+    # ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
+    # ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
+    # bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
+
 
 
     losses = ic_loss_weighted \

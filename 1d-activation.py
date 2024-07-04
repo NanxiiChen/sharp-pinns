@@ -20,7 +20,7 @@ now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     # now = "fourier-feather"
-writer = SummaryWriter(log_dir="debugs/" + now)
+writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 
 
 # Define the sampler
@@ -52,7 +52,7 @@ class GeoTimeSampler:
                        maxs=[self.geo_span[1], self.time_span[1]],
                        num=in_num)
 
-        return torch.from_numpy(geotime).float().requires_grad_(True)
+        return geotime.float().requires_grad_(True)
 
     def bc_sample(self, bc_num, strategy: str = "lhs",):
         if strategy == "lhs":
@@ -140,6 +140,7 @@ BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
 EPOCHS = config.getint("TRAIN", "EPOCHS")
 ALPHA = config.getfloat("TRAIN", "ALPHA")
 LR = config.getfloat("TRAIN", "LR")
+num_seg = config.getint("TRAIN", "NUM_SEG")
 
 ALPHA_PHI = config.getfloat("PARAM", "ALPHA_PHI")
 OMEGA_PHI = config.getfloat("PARAM", "OMEGA_PHI")
@@ -148,6 +149,11 @@ AA = config.getfloat("PARAM", "AA")
 LP = config.getfloat("PARAM", "LP")
 CSE = config.getfloat("PARAM", "CSE")
 CLE = eval(config.get("PARAM", "CLE"))
+
+causal_configs = {
+    "eps": 1e-2,
+    "delta": 0.99
+}
 
 
 def bc_func(xts):
@@ -165,6 +171,16 @@ def ic_func(xts):
     return torch.cat([phi, c], dim=1)
 
 
+def split_temporal_coords_into_segments(ts, time_span, num_seg):
+    # Split the temporal coordinates into segments
+    # Return the indexes of the temporal coordinates
+    ts = ts.cpu()
+    min_t, max_t = time_span
+    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    indices = torch.bucketize(ts, bins)
+    return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
+
+
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
 
@@ -174,6 +190,7 @@ ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
+
 
 for epoch in range(EPOCHS):
     net.train()
@@ -187,26 +204,24 @@ for epoch in range(EPOCHS):
                                         method=method)
         net.train()
         data = torch.cat([geotime, anchors],
-                         dim=0).requires_grad_(True)
-
-        bcdata = bcdata.to(net.device)
-        icdata = icdata.to(net.device)
-
+                         dim=0).detach().requires_grad_(True)
+        data = data[torch.randperm(len(data))]
+        
+        bcdata = bcdata.to(net.device).detach().requires_grad_(True)
+        icdata = icdata.to(net.device).detach().requires_grad_(True)
+        
+        
         fig, ax = net.plot_samplings(
             geotime, bcdata,
             icdata, anchors)
-        # plt.savefig(f"./debugs/{now}/sampling-{epoch}.png",
+        # plt.savefig(f"./causal/{now}/sampling-{epoch}.png",
         #              bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
-
+        
     ac_residual, ch_residual = net.net_pde(data)
-    ac_loss = criteria(ac_residual, torch.zeros_like(ac_residual))
-    ch_loss = criteria(ch_residual, torch.zeros_like(ch_residual))
-    bc_forward = net.net_u(bcdata)
-    bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
+    bc_forward = net.net_u(bcdata)  
     ic_forward = net.net_u(icdata)
-    ic_loss = criteria(ic_forward, ic_func(icdata).detach())
-
+    
     if epoch % BREAK_INTERVAL == 0:
 
         ac_weight, ch_weight, bc_weight, ic_weight = \
@@ -216,46 +231,49 @@ for epoch in range(EPOCHS):
                 batch_size=NTK_BATCH_SIZE
             )
 
-        print(f"epoch: {epoch}, "
-              f"ic_loss: {ic_loss.item():.4e}, "
-              f"bc_loss: {bc_loss.item():.4e}, "
-              f"ac_loss: {ac_loss.item():.4e}, "
-              f"ch_loss: {ch_loss.item():.4e}, ")
-
-        writer.add_scalar("loss/ic", ic_loss, epoch)
-        writer.add_scalar("loss/bc", bc_loss, epoch)
-        writer.add_scalar("loss/ac", ac_loss, epoch)
-        writer.add_scalar("loss/ch", ch_loss, epoch)
-
         writer.add_scalar("weight/ic", ic_weight, epoch)
         writer.add_scalar("weight/bc", bc_weight, epoch)
         writer.add_scalar("weight/ac", ac_weight, epoch)
         writer.add_scalar("weight/ch", ch_weight, epoch)
 
+
         fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
 
-        if epoch % (BREAK_INTERVAL) == 0:
-            torch.save(net.state_dict(), f"./debugs/{now}/model-{epoch}.pt")
-        # plt.savefig(f"./debugs/{now}/fig-{epoch}.png",
-        #             bbox_inches='tight', dpi=300)
-        # ! Saving figure is too slow
+        torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
 
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
+        
+    ac_loss_weighted = criteria(ac_residual, torch.zeros_like(ac_residual)) * ac_weight
+    ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
+    ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
+    bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
 
-    losses = ic_weight * ic_loss \
-        + bc_weight * bc_loss \
-        + ac_weight * ac_loss \
-        + ch_weight * ch_loss
+        
+    losses = ic_loss_weighted \
+        + bc_loss_weighted \
+        + ac_loss_weighted \
+        + ch_loss_weighted
 
     if epoch % (BREAK_INTERVAL) == 0:
         writer.add_scalar("loss/total", losses, epoch)
+        writer.add_scalar("loss/ac_loss",
+                          ac_loss_weighted, epoch)
+        writer.add_scalar("loss/ch_loss",
+                          ch_loss_weighted, epoch)
+        writer.add_scalar("loss/ic_loss",
+                          ic_loss_weighted, epoch)
+        writer.add_scalar("loss/bc_loss",
+                          bc_loss_weighted, epoch)
+
+        print(f"epoch: {epoch}, "
+              f"ic_loss: {ic_loss_weighted.item():.4e}, "
+              f"bc_loss: {bc_loss_weighted.item():.4e}, "
+              f"ac_loss: {ac_loss_weighted.item():.4e}, "
+              f"ch_loss: {ch_loss_weighted.item():.4e}, ")
 
     opt.zero_grad()
     losses.backward()
     opt.step()
 
-
-# torch.save(net.state_dict(), "model.pt")
-torch.save(net.state_dict(), "model.pt")
 print("Done")

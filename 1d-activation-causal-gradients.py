@@ -19,12 +19,21 @@ LOG_NAME = config.get("TRAIN", "LOG_NAME").strip('"')
 now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-save_root = "/root/tf-logs"
-writer = SummaryWriter(log_dir=save_root + "/" + now)
+<<<<<<< HEAD:1d-activation-gradient-weighted-causal.py
+writer = SummaryWriter(log_dir="debugs/" + now)
+save_root = "debugs"
 
+# Define the sampler
 
 
 # Define the sampler
+=======
+    # now = "fourier-feather"
+writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
+
+
+# Define the sampler
+>>>>>>> 4cd077b211c847f4dad95b4f7055b9167997fca3:1d-activation-causal-gradients.py
 class GeoTimeSampler:
     def __init__(
         self,
@@ -83,9 +92,9 @@ class GeoTimeSampler:
         #                   ts.reshape(-1, 1)])
         # xts = np.vstack([xt_l, xt_r])
         xt_l = torch.cat([torch.full((ts.shape[0], 1), self.geo_span[0], device="cuda"),
-                            ts], dim=1)
+                          ts], dim=1)
         xt_r = torch.cat([torch.full((ts.shape[0], 1), self.geo_span[1], device="cuda"),
-                            ts], dim=1)
+                          ts], dim=1)
         xts = torch.cat([xt_l, xt_r], dim=0)
         return xts.float().requires_grad_(True)
 
@@ -124,7 +133,8 @@ class GeoTimeSampler:
         # xts = np.hstack(
         #     [xs, np.full(xs.shape[0], self.time_span[0]).reshape(-1, 1)])
         xs = torch.cat([xs, xs_local], dim=0)
-        xts = torch.cat([xs, torch.full((xs.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
+        xts = torch.cat(
+            [xs, torch.full((xs.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
 
         return xts.float().requires_grad_(True)
 
@@ -164,6 +174,7 @@ BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
 EPOCHS = config.getint("TRAIN", "EPOCHS")
 ALPHA = config.getfloat("TRAIN", "ALPHA")
 LR = config.getfloat("TRAIN", "LR")
+num_seg = config.getint("TRAIN", "NUM_SEG")
 
 ALPHA_PHI = config.getfloat("PARAM", "ALPHA_PHI")
 OMEGA_PHI = config.getfloat("PARAM", "OMEGA_PHI")
@@ -172,6 +183,13 @@ AA = config.getfloat("PARAM", "AA")
 LP = config.getfloat("PARAM", "LP")
 CSE = config.getfloat("PARAM", "CSE")
 CLE = eval(config.get("PARAM", "CLE"))
+
+causal_configs = {
+    "eps": 1e-9,
+    "min_thresh": 0.99,
+    "step": 1.5,
+    "mean_thresh": 0.6
+}
 
 
 def bc_func(xts):
@@ -189,6 +207,16 @@ def ic_func(xts):
     return torch.cat([phi, c], dim=1)
 
 
+def split_temporal_coords_into_segments(ts, time_span, num_seg):
+    # Split the temporal coordinates into segments
+    # Return the indexes of the temporal coordinates
+    ts = ts.cpu()
+    min_t, max_t = time_span
+    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    indices = torch.bucketize(ts, bins)
+    return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
+
+
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
 
@@ -198,6 +226,7 @@ ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
+
 
 for epoch in range(EPOCHS):
     net.train()
@@ -209,87 +238,115 @@ for epoch in range(EPOCHS):
         method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
         anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
                                         method=method)
-        net.train()
+        # net.train()
         data = torch.cat([geotime, anchors],
-                         dim=0).requires_grad_(True)
+                         dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
 
-        bcdata = bcdata.to(net.device)
-        icdata = icdata.to(net.device)
+        # shuffle
+        data = data[torch.randperm(len(data))]
+        indices = split_temporal_coords_into_segments(data[:, -1],
+                                                      time_span,
+                                                      num_seg)
 
-        fig, ax = net.plot_samplings(
-            geotime, bcdata,
-            icdata, anchors)
-        # plt.savefig(f"./debugs/{now}/sampling-{epoch}.png",
-        #              bbox_inches='tight', dpi=300)
+        bcdata = bcdata.to(net.device).detach().requires_grad_(True)
+        icdata = icdata.to(net.device).detach().requires_grad_(True)
+
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
+        #             bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
 
-    ac_residual, ch_residual = net.net_pde(data)
-    ac_loss = criteria(ac_residual, torch.zeros_like(ac_residual))
-    ch_loss = criteria(ch_residual, torch.zeros_like(ch_residual))
-    bc_forward = net.net_u(bcdata)
-    bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
+    # ac_residual, ch_residual = net.net_pde(data)
+    bc_forward = net.net_u(bcdata)  
     ic_forward = net.net_u(icdata)
-    ic_loss = criteria(ic_forward, ic_func(icdata).detach())
+    
+    ac_seg_loss = torch.zeros(num_seg, device=net.device)
+    ch_seg_loss = torch.zeros(num_seg, device=net.device)
+    
+    for seg_idx, data_idx in enumerate(indices):
+        ac_residual, ch_residual = net.net_pde(data[data_idx])
+        ac_seg_loss[seg_idx] = torch.mean(ac_residual**2)
+        ch_seg_loss[seg_idx] = torch.mean(ch_residual**2)
 
+
+    ac_causal_weights = torch.zeros(num_seg, device=net.device)
+    ch_causal_weights = torch.zeros(num_seg, device=net.device)
+    for seg_idx in range(num_seg):
+        if seg_idx == 0:
+            ac_causal_weights[seg_idx] = 1
+            ch_causal_weights[seg_idx] = 1
+        else:
+            ac_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).item()
+            ch_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
+
+    if ac_causal_weights[-1] > causal_configs["min_thresh"] \
+        and ch_causal_weights[-1] > causal_configs["min_thresh"]:
+        causal_configs["eps"] *= causal_configs["step"]
+        print(f"epoch {epoch}: "
+              f"increase eps to {causal_configs['eps']:.2e}")
+        
+    if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+        or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+        causal_configs["eps"] /= causal_configs["step"]
+        print(f"epoch {epoch}: "
+              f"decrease eps to {causal_configs['eps']:.2e}")
+
+
+    ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
+    ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
+    bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
+    ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
+    
+    
     if epoch % BREAK_INTERVAL == 0:
-
-        # ac_weight, ch_weight, bc_weight, ic_weight = \
-        #     net.compute_ntk_weight(
-        #         [ac_residual, ch_residual, bc_forward, ic_forward],
-        #         method=config.get("TRAIN", "NTK_MODE").strip('"'),
-        #         batch_size=NTK_BATCH_SIZE
-        #     )
-
-        # ac_weight, ch_weight, bc_weight, ic_weight = \
-        #     net.compute_ntk_weight(
-        #         [ac_loss, ch_loss, bc_loss, ic_loss],
-        #         method=config.get("TRAIN", "NTK_MODE").strip('"'),
-        #         batch_size=NTK_BATCH_SIZE
-        #     )
-
         ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
             [ac_loss, ch_loss, bc_loss, ic_loss],)
 
-        print(f"epoch: {epoch}, "
-              f"ic_loss: {ic_loss.item():.4e}, "
-              f"bc_loss: {bc_loss.item():.4e}, "
-              f"ac_loss: {ac_loss.item():.4e}, "
-              f"ch_loss: {ch_loss.item():.4e}, ")
+        for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
+            if np.isnan(weight):
+                raise ValueError("NaN weight")
 
-        writer.add_scalar("loss/ic_loss", ic_loss, epoch)
-        writer.add_scalar("loss/bc_loss", bc_loss, epoch)
-        writer.add_scalar("loss/ac_loss", ac_loss, epoch)
-        writer.add_scalar("loss/ch_loss", ch_loss, epoch)
-
-        writer.add_scalar("weight/ic", ic_weight, epoch)
-        writer.add_scalar("weight/bc", bc_weight, epoch)
-        writer.add_scalar("weight/ac", ac_weight, epoch)
-        writer.add_scalar("weight/ch", ch_weight, epoch)
-
-        fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
-
-        if epoch % (BREAK_INTERVAL) == 0:
-            torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
-        # plt.savefig(f"./debugs/{now}/fig-{epoch}.png",
-        #             bbox_inches='tight', dpi=300)
-        # ! Saving figure is too slow
-
-        writer.add_figure("fig/predict", fig, epoch)
-        writer.add_scalar("acc", acc, epoch)
-
-    losses = ic_weight * ic_loss \
-        + bc_weight * bc_loss \
-        + ac_weight * ac_loss \
-        + ch_weight * ch_loss
-
-    if epoch % (BREAK_INTERVAL) == 0:
-        writer.add_scalar("loss/total", losses, epoch)
-
+    losses = ac_weight * ac_loss + ch_weight * ch_loss + \
+        bc_weight * bc_loss + ic_weight * ic_loss
+    
+    
     opt.zero_grad()
     losses.backward()
     opt.step()
 
+    if epoch % BREAK_INTERVAL == 0:
+        print(f"epoch {epoch}: ac_loss {ac_loss:.2e}, ch_loss {ch_loss:.2e}, "
+              f"bc_loss {bc_loss:.2e}, ic_loss {ic_loss:.2e}, "
+              f"ac_weight {ac_weight:.2e}, ch_weight {ch_weight:.2e}, "
+              f"bc_weight {bc_weight:.2e}, ic_weight {ic_weight:.2e}")
 
-# torch.save(net.state_dict(), "model.pt")
-torch.save(net.state_dict(), "model.pt")
-print("Done")
+        writer.add_scalar("loss/ac_loss", ac_loss, epoch)
+        writer.add_scalar("loss/ch_loss", ch_loss, epoch)
+        writer.add_scalar("loss/bc_loss", bc_loss, epoch)
+        writer.add_scalar("loss/ic_loss", ic_loss, epoch)
+        writer.add_scalar("weight/ac_weight", ac_weight, epoch)
+        writer.add_scalar("weight/ch_weight", ch_weight, epoch)
+        writer.add_scalar("weight/bc_weight", bc_weight, epoch)
+        writer.add_scalar("weight/ic_weight", ic_weight, epoch)
+
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
+        ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
+        ax.set_title(f"epoch: {epoch} "
+                     f"eps: {causal_configs['eps']:.2e}")
+        ax.legend(loc="upper right")
+        # close the figure
+        plt.close(fig)
+        writer.add_figure("fig/causal_weights", fig, epoch)
+        
+
+        fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
+        
+        torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
+        writer.add_figure("fig/predict", fig, epoch)
+        writer.add_scalar("acc", acc, epoch)
+        plt.close(fig)
+    
