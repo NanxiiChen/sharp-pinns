@@ -20,7 +20,8 @@ now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     # now = "fourier-feather"
-writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
+save_root = "debugs/"
+writer = SummaryWriter(log_dir=save_root + now)
 
 
 # Define the sampler
@@ -206,22 +207,21 @@ for epoch in range(EPOCHS):
         data = torch.cat([geotime, anchors],
                          dim=0).detach().requires_grad_(True)
         data = data[torch.randperm(len(data))]
-        
+
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
-        
-        
+
         fig, ax = net.plot_samplings(
             geotime, bcdata,
             icdata, anchors)
         # plt.savefig(f"./causal/{now}/sampling-{epoch}.png",
         #              bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
-        
+
     ac_residual, ch_residual = net.net_pde(data)
-    bc_forward = net.net_u(bcdata)  
+    bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    
+
     if epoch % BREAK_INTERVAL == 0:
 
         ac_weight, ch_weight, bc_weight, ic_weight = \
@@ -236,20 +236,22 @@ for epoch in range(EPOCHS):
         writer.add_scalar("weight/ac", ac_weight, epoch)
         writer.add_scalar("weight/ch", ch_weight, epoch)
 
-
         fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
 
-        torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
+        torch.save(net.state_dict(), save_root + f"{now}/model-{epoch}.pt")
 
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
-        
-    ac_loss_weighted = criteria(ac_residual, torch.zeros_like(ac_residual)) * ac_weight
-    ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
-    ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
-    bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
 
-        
+    ac_loss_weighted = criteria(
+        ac_residual, torch.zeros_like(ac_residual)) * ac_weight
+    ch_loss_weighted = criteria(
+        ch_residual, torch.zeros_like(ch_residual)) * ch_weight
+    ic_loss_weighted = criteria(
+        bc_forward, bc_func(bcdata).detach()) * ic_weight
+    bc_loss_weighted = criteria(
+        ic_forward, ic_func(icdata).detach()) * bc_weight
+
     losses = ic_loss_weighted \
         + bc_loss_weighted \
         + ac_loss_weighted \
