@@ -38,11 +38,9 @@ class FourierEmbedding(torch.nn.Module):
             self.linear.bias.data.zero_()
         elif self.method == "linear":
             torch.nn.init.xavier_normal_(self.linear.weight)
-            
+
         for param in self.linear.parameters():
             param.requires_grad = True
-
-        
 
     def forward(self, x):
         x = self.linear(x)
@@ -53,7 +51,6 @@ class FourierEmbedding(torch.nn.Module):
             return x
         else:
             raise ValueError("Ivalid method.")
-
 
 
 class SpatialTemporalFourierEmbedding(torch.nn.Module):
@@ -71,7 +68,7 @@ class SpatialTemporalFourierEmbedding(torch.nn.Module):
 
 
 class MultiScaleFourierEmbedding(torch.nn.Module):
-    
+
     def __init__(self, in_features, embedding_features=8, std=1):
         super().__init__()
         self.spatial_low_embedding = FourierEmbedding(
@@ -96,14 +93,13 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
         return torch.cat([y_low, y_high, y_temporal], dim=1)
 
 
-
 # class FourierEmbedding(torch.nn.Module):
 #     def __init__(self, input_dim, embedding_dim, ):
 #         super().__init__()
 #         self.omega = torch.arange(1, embedding_dim+1, device="cuda").float().view(1, -1) * np.pi / 10
 #         self.omega_mat = torch.cat([self.omega] * input_dim, dim=0).requires_grad_(False)
-        
-        
+
+
 #     def forward(self, geotime):
 #         # geotime: [x, y, t]
 #         # only on x, y
@@ -112,8 +108,6 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
 #             torch.sin(geotime[:, :-1] @ self.omega_mat),
 #             geotime[:, -1:] @ self.omega
 #         ], dim=1)
-        
-
 
 
 class PFPINN(torch.nn.Module):
@@ -131,7 +125,7 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
-        
+
         # self.embedding = FourierEmbedding(DIM, embedding_features)
         # self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.spatial_embedding = FourierEmbedding(DIM, embedding_features, std=1, method="trig").to(self.device)
@@ -143,8 +137,6 @@ class PFPINN(torch.nn.Module):
         return torch.autograd.grad(inputs=down, outputs=up,
                                    grad_outputs=torch.ones_like(up),
                                    create_graph=True, retain_graph=True)[0]
-        
-    
 
     def make_layers(self):
         layers = []
@@ -183,7 +175,6 @@ class PFPINN(torch.nn.Module):
             return torch.cat([dev_phi[:, 1:2], dev_c[:, 1:2]], dim=1)
         elif on == "x":
             return torch.cat([dev_phi[:, 0:1], dev_c[:, 0:1]], dim=1)
-
 
     def net_pde(self, geotime):
         # compute the pde residual
@@ -228,19 +219,17 @@ class PFPINN(torch.nn.Module):
         ch = dc_dt - DD / 2 / AA * nabla2_df_dc
 
         return [ac/1e3, ch/1e3]
-    
-    # def net_pde(self, geotime):
+
+    # def net_pde_normalized(self, geotime):
     #     # compute the pde residual
     #     # geo: x/y, t
     #     # sol: phi, c
-        
 
     #     AC1 = 2 * AA * LP / TIME_COEF
     #     AC2 = LP * OMEGA_PHI / TIME_COEF
     #     AC3 = LP * ALPHA_PHI * GEO_COEF**2 / TIME_COEF
     #     CH1 = 2 * AA * MM * GEO_COEF**2 / TIME_COEF
-        
-        
+
     #     geotime = geotime.detach().requires_grad_(True).to(self.device)
     #     sol = self.net_u(geotime)
 
@@ -262,7 +251,7 @@ class PFPINN(torch.nn.Module):
     #     for i in range(geotime.shape[1]-1):
     #         nabla2c += self.auto_grad(dc_dgeo[:, i:i+1],
     #                                   geotime)[:, i:i+1]
-        
+
     #     h_phi = -2 * sol[:, 0:1]**3 + 3 * sol[:, 0:1]**2
     #     # g_phi = sol[:, 0:1]**2 * (sol[:, 0:1] - 1)**2
     #     dh_dphi = -6 * sol[:, 0:1]**2 + 6 * sol[:, 0:1]
@@ -271,12 +260,11 @@ class PFPINN(torch.nn.Module):
     #     # nabla_h_phi = dh_dphi * dphi_dgeo
     #     # nabla2_h_phi = dh_dphi * nabla2phi + d2h_dphi2 * torch.sum(dphi_dgeo**2, dim=1, keepdim=True)
     #     nabla2_h_phi = 6 * (
-    #         sol[:, 0:1] * (1 -  sol[:, 0:1]) * nabla2phi
-    #         + (1 - 2 * sol[:, 0:1]) * torch.sum(dphi_dgeo**2, dim=1, keepdim=True)
+    #         sol[:, 0:1] * (1 - sol[:, 0:1]) * nabla2phi
+    #         + (1 - 2 * sol[:, 0:1]) *
+    #         torch.sum(dphi_dgeo**2, dim=1, keepdim=True)
     #     )
 
-        
-            
     #     ch = dc_dt - CH1 * nabla2c + CH1 * (CSE - CLE) * nabla2_h_phi
     #     ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
     #         - AC2 * dg_dphi - AC3 * nabla2phi \
@@ -322,7 +310,7 @@ class PFPINN(torch.nn.Module):
     def compute_jacobian(self, output, mini_batch=False):
         params = [p for p in list(self.parameters())[:-1] if p.requires_grad]
         output = output.reshape(-1)
-        
+
         if not mini_batch:
             grads = torch.autograd.grad(output, params,
                                         (torch.eye(output.shape[0])
@@ -339,10 +327,10 @@ class PFPINN(torch.nn.Module):
                                                  (torch.eye(output_batch.shape[0])
                                                   .to(self.device),),
                                                  is_grads_batched=True, retain_graph=True)
-                grads.append(torch.cat([grad.flatten().reshape(len(output_batch), -1) for grad in grad_batch], 1))
+                grads.append(torch.cat([grad.flatten().reshape(
+                    len(output_batch), -1) for grad in grad_batch], 1))
             return torch.cat(grads)
 
-    
     # def compute_jacobian(self, output):
     #     output = output.reshape(-1)
 
@@ -475,7 +463,7 @@ class PFPINN(torch.nn.Module):
         else:
             raise ValueError("Only 2 or 3 dimensional data is supported")
         return fig, ax
-    
+
     def compute_ntk_diag(self, residuals, batch_size):
         diags = []
         for res in residuals:
@@ -489,8 +477,7 @@ class PFPINN(torch.nn.Module):
                 diag = self.compute_ntk(jac, compute='diag')
             diags.append(diag)
         return diags
-                    
-                    
+
     def compute_ntk_weight(self, residuals, method, batch_size, return_ntk_info=False):
         # compute the weight of each loss term using ntk-based method
         traces = []
