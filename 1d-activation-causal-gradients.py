@@ -19,21 +19,11 @@ LOG_NAME = config.get("TRAIN", "LOG_NAME").strip('"')
 now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-<<<<<<< HEAD:1d-activation-gradient-weighted-causal.py
-writer = SummaryWriter(log_dir="debugs/" + now)
-save_root = "debugs"
-
-# Define the sampler
-
-
-# Define the sampler
-=======
     # now = "fourier-feather"
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 
 
 # Define the sampler
->>>>>>> 4cd077b211c847f4dad95b4f7055b9167997fca3:1d-activation-causal-gradients.py
 class GeoTimeSampler:
     def __init__(
         self,
@@ -258,17 +248,16 @@ for epoch in range(EPOCHS):
         writer.add_figure("sampling", fig, epoch)
 
     # ac_residual, ch_residual = net.net_pde(data)
-    bc_forward = net.net_u(bcdata)  
+    bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    
+
     ac_seg_loss = torch.zeros(num_seg, device=net.device)
     ch_seg_loss = torch.zeros(num_seg, device=net.device)
-    
+
     for seg_idx, data_idx in enumerate(indices):
         ac_residual, ch_residual = net.net_pde(data[data_idx])
         ac_seg_loss[seg_idx] = torch.mean(ac_residual**2)
         ch_seg_loss[seg_idx] = torch.mean(ch_residual**2)
-
 
     ac_causal_weights = torch.zeros(num_seg, device=net.device)
     ch_causal_weights = torch.zeros(num_seg, device=net.device)
@@ -283,24 +272,22 @@ for epoch in range(EPOCHS):
                 -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
 
     if ac_causal_weights[-1] > causal_configs["min_thresh"] \
-        and ch_causal_weights[-1] > causal_configs["min_thresh"]:
+            and ch_causal_weights[-1] > causal_configs["min_thresh"]:
         causal_configs["eps"] *= causal_configs["step"]
         print(f"epoch {epoch}: "
               f"increase eps to {causal_configs['eps']:.2e}")
-        
+
     if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-        or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+            or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
         causal_configs["eps"] /= causal_configs["step"]
         print(f"epoch {epoch}: "
               f"decrease eps to {causal_configs['eps']:.2e}")
-
 
     ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
     ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
-    
-    
+
     if epoch % BREAK_INTERVAL == 0:
         ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
             [ac_loss, ch_loss, bc_loss, ic_loss],)
@@ -311,8 +298,7 @@ for epoch in range(EPOCHS):
 
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + ic_weight * ic_loss
-    
-    
+
     opt.zero_grad()
     losses.backward()
     opt.step()
@@ -341,12 +327,10 @@ for epoch in range(EPOCHS):
         # close the figure
         plt.close(fig)
         writer.add_figure("fig/causal_weights", fig, epoch)
-        
 
         fig, ax, acc = net.plot_predict(ref_sol=ref_sol, epoch=epoch)
-        
+
         torch.save(net.state_dict(), f"/root/tf-logs/{now}/model-{epoch}.pt")
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
         plt.close(fig)
-    
