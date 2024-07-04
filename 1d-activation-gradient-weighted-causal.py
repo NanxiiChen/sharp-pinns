@@ -25,12 +25,13 @@ LOG_NAME = config.get("TRAIN", "LOG_NAME").strip('"')
 now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
-save_root = "/root/tf-logs"
+writer = SummaryWriter(log_dir="debugs/" + now)
+save_root = "debugs"
 
 # Define the sampler
 
 
+# Define the sampler
 class GeoTimeSampler:
     def __init__(
         self,
@@ -59,30 +60,41 @@ class GeoTimeSampler:
                        maxs=[self.geo_span[1], self.time_span[1]],
                        num=in_num)
 
-        return torch.from_numpy(geotime).float().requires_grad_(True)
+        return geotime.float().requires_grad_(True)
 
     def bc_sample(self, bc_num, strategy: str = "lhs",):
         if strategy == "lhs":
             ts = (lhs(1, bc_num) *
                   (self.time_span[1] - self.time_span[0]) + self.time_span[0]).reshape(-1, 1)
         elif strategy == "grid":
-            ts = np.linspace(self.time_span[0], self.time_span[1], bc_num)[
+            # ts = np.linspace(self.time_span[0], self.time_span[1], bc_num)[
+            #     1:-1].reshape(-1, 1)
+            ts = torch.linspace(self.time_span[0], self.time_span[1], bc_num, device="cuda")[
                 1:-1].reshape(-1, 1)
         elif strategy == "grid_transition":
-            ts = np.linspace(self.time_span[0], self.time_span[1], bc_num)[
+            # ts = np.linspace(self.time_span[0], self.time_span[1], bc_num)[
+            #     1:-1].reshape(-1, 1)
+            ts = torch.linspace(self.time_span[0], self.time_span[1], bc_num, device="cuda")[
                 1:-1].reshape(-1, 1)
             distance = (self.time_span[1] - self.time_span[0]) / (bc_num - 1)
-            shift = np.random.uniform(-distance, distance, 1)
-            ts = np.clip(ts + shift, self.time_span[0], self.time_span[1])
+            # shift = np.random.uniform(-distance, distance, 1)
+            # ts = np.clip(ts + shift, self.time_span[0], self.time_span[1])
+            shift = torch.rand(1, device="cuda") * 2 * distance - distance
+            ts = torch.clamp(ts + shift, self.time_span[0], self.time_span[1])
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xt_l = np.hstack([np.full(ts.shape[0], self.geo_span[0]).reshape(-1, 1),
-                          ts.reshape(-1, 1)])
-        xt_r = np.hstack([np.full(ts.shape[0], self.geo_span[1]).reshape(-1, 1),
-                          ts.reshape(-1, 1)])
-        xts = np.vstack([xt_l, xt_r])
-        return torch.from_numpy(xts).float().requires_grad_(True)
+        # xt_l = np.hstack([np.full(ts.shape[0], self.geo_span[0]).reshape(-1, 1),
+        #                   ts.reshape(-1, 1)])
+        # xt_r = np.hstack([np.full(ts.shape[0], self.geo_span[1]).reshape(-1, 1),
+        #                   ts.reshape(-1, 1)])
+        # xts = np.vstack([xt_l, xt_r])
+        xt_l = torch.cat([torch.full((ts.shape[0], 1), self.geo_span[0], device="cuda"),
+                          ts], dim=1)
+        xt_r = torch.cat([torch.full((ts.shape[0], 1), self.geo_span[1], device="cuda"),
+                          ts], dim=1)
+        xts = torch.cat([xt_l, xt_r], dim=0)
+        return xts.float().requires_grad_(True)
 
     def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[-0.1, 0.1]):
         if strategy == "lhs":
@@ -91,25 +103,38 @@ class GeoTimeSampler:
             xs_local = (lhs(1, ic_num) *
                         (local_area[1] - local_area[0]) + local_area[0]).reshape(-1, 1)
         elif strategy == "grid":
-            xs = np.linspace(self.geo_span[0], self.geo_span[1], ic_num)[
+            # xs = np.linspace(self.geo_span[0], self.geo_span[1], ic_num)[
+            #     1:-1].reshape(-1, 1)
+            # xs_local = np.linspace(local_area[0], local_area[1], ic_num)[
+            #     1:-1].reshape(-1, 1)
+            xs = torch.linspace(self.geo_span[0], self.geo_span[1], ic_num, device="cuda")[
                 1:-1].reshape(-1, 1)
-            xs_local = np.linspace(local_area[0], local_area[1], ic_num)[
+            xs_local = torch.linspace(local_area[0], local_area[1], ic_num, device="cuda")[
                 1:-1].reshape(-1, 1)
         elif strategy == "grid_transition":
-            xs = np.linspace(self.geo_span[0], self.geo_span[1], ic_num)[
+            # xs = np.linspace(self.geo_span[0], self.geo_span[1], ic_num)[
+            #     1:-1].reshape(-1, 1)
+            # xs_local = np.linspace(local_area[0], local_area[1], ic_num)[
+            #     1:-1].reshape(-1, 1)
+            xs = torch.linspace(self.geo_span[0], self.geo_span[1], ic_num, device="cuda")[
                 1:-1].reshape(-1, 1)
-            xs_local = np.linspace(local_area[0], local_area[1], ic_num)[
+            xs_local = torch.linspace(local_area[0], local_area[1], ic_num, device="cuda")[
                 1:-1].reshape(-1, 1)
             distance = (self.geo_span[1] - self.geo_span[0]) / (ic_num - 1)
-            shift = np.random.uniform(-distance, distance, 1)
-            xs = np.clip(xs + shift, self.geo_span[0], self.geo_span[1])
+            shift = torch.rand(1, device="cuda") * 2 * distance - distance
+            xs = torch.clamp(xs + shift, self.geo_span[0], self.geo_span[1])
+            # shift = np.random.uniform(-distance, distance, 1)
+            # xs = np.clip(xs + shift, self.geo_span[0], self.geo_span[1])
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xs = np.vstack([xs, xs_local])
-        xts = np.hstack(
-            [xs, np.full(xs.shape[0], self.time_span[0]).reshape(-1, 1)])
+        # xs = np.vstack([xs, xs_local])
+        # xts = np.hstack(
+        #     [xs, np.full(xs.shape[0], self.time_span[0]).reshape(-1, 1)])
+        xs = torch.cat([xs, xs_local], dim=0)
+        xts = torch.cat(
+            [xs, torch.full((xs.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
 
-        return torch.from_numpy(xts).float().requires_grad_(True)
+        return xts.float().requires_grad_(True)
 
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
