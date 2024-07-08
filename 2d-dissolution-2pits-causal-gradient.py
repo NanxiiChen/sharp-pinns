@@ -177,7 +177,7 @@ causal_configs = {
     "eps": 1e-12,
     "min_thresh": 0.99,
     "step": 2,
-    "mean_thresh": 0.5
+    "mean_thresh": 0.4
 }
 
 
@@ -217,7 +217,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=50000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -230,7 +230,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
     net.train()
     # need_causal = not (causal_configs["eps"] > 1e-9 and epoch > 12000)
-    need_causal = False
+    need_causal = True
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
@@ -259,7 +259,7 @@ for epoch in range(EPOCHS):
         # writer.add_figure("sampling", fig, epoch)
 
 
-    
+    ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
     
@@ -268,9 +268,10 @@ for epoch in range(EPOCHS):
         ch_seg_loss = torch.zeros(num_seg, device=net.device)
 
         for seg_idx, data_idx in enumerate(indices):
-            ac_residual, ch_residual = net.net_pde(data[data_idx])
-            ac_seg_loss[seg_idx] = torch.mean(ac_residual**2)
-            ch_seg_loss[seg_idx] = torch.mean(ch_residual**2)
+            ac_seg_residual = ac_residual[data_idx]
+            ch_seg_residual = ch_residual[data_idx]
+            ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
+            ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
 
 
         ac_causal_weights = torch.zeros(num_seg, device=net.device)
@@ -303,7 +304,6 @@ for epoch in range(EPOCHS):
         ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
         
     else:
-        ac_residual, ch_residual = net.net_pde(data)
         ac_loss = torch.mean(ac_residual**2)
         ch_loss = torch.mean(ch_residual**2)
         

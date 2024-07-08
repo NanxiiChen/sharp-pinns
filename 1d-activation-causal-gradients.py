@@ -247,7 +247,7 @@ for epoch in range(EPOCHS):
         #             bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
 
-    # ac_residual, ch_residual = net.net_pde(data)
+    ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
 
@@ -255,9 +255,10 @@ for epoch in range(EPOCHS):
     ch_seg_loss = torch.zeros(num_seg, device=net.device)
 
     for seg_idx, data_idx in enumerate(indices):
-        ac_residual, ch_residual = net.net_pde(data[data_idx])
-        ac_seg_loss[seg_idx] = torch.mean(ac_residual**2)
-        ch_seg_loss[seg_idx] = torch.mean(ch_residual**2)
+        ac_seg_residual = ac_residual[data_idx]
+        ch_seg_residual = ch_residual[data_idx]
+        ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
+        ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
 
     ac_causal_weights = torch.zeros(num_seg, device=net.device)
     ch_causal_weights = torch.zeros(num_seg, device=net.device)

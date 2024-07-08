@@ -16,7 +16,7 @@ config.read("config.ini")
 
 
 # now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-now = "causal+gradient"
+now = "causal+gradient+" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 # writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
@@ -216,14 +216,14 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
-        # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
-        data = geotime.requires_grad_(True)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
+        net.train()
+        data = torch.cat([geotime, anchors],
+                         dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]
@@ -234,13 +234,13 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        writer.add_figure("sampling", fig, epoch)
 
 
-    # ac_residual, ch_residual = net.net_pde(data)
+    ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
 
@@ -248,10 +248,10 @@ for epoch in range(EPOCHS):
     ch_seg_loss = torch.zeros(num_seg, device=net.device)
 
     for seg_idx, data_idx in enumerate(indices):
-        ac_residual, ch_residual = net.net_pde(data[data_idx])
-        ac_seg_loss[seg_idx] = torch.mean(ac_residual**2)
-        ch_seg_loss[seg_idx] = torch.mean(ch_residual**2)
-
+        ac_seg_residual = ac_residual[data_idx]
+        ch_seg_residual = ch_residual[data_idx]
+        ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
+        ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
 
     ac_causal_weights = torch.zeros(num_seg, device=net.device)
     ch_causal_weights = torch.zeros(num_seg, device=net.device)

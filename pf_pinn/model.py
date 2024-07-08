@@ -40,7 +40,7 @@ class FourierEmbedding(torch.nn.Module):
             torch.nn.init.xavier_normal_(self.linear.weight)
 
         for param in self.linear.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
     def forward(self, x):
         x = self.linear(x)
@@ -115,7 +115,7 @@ class PFPINN(torch.nn.Module):
         self,
         sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=8,
+        embedding_features=20,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -269,7 +269,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi \
 
-        return [ac, ch]
+        return [ac/1e9, ch]
 
     def gradient(self, loss):
         # compute gradient of loss w.r.t. model parameters
@@ -528,8 +528,8 @@ class PFPINN(torch.nn.Module):
         traces = np.array(traces)
         if return_ntk_info:
             return traces.sum() / traces, jacs, traces
-        return traces.sum() / traces / np.sqrt(np.sum(traces**2) * len(traces))
-        # return traces.sum() / traces
+        # return traces.sum() / traces / np.sqrt(np.sum(traces**2) * len(traces))
+        return traces.sum() / traces
 
     def compute_gradient_weight(self, losses):
 
