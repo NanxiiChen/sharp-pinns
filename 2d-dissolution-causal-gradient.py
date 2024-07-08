@@ -78,20 +78,20 @@ class GeoTimeSampler:
                         torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
                         xts[:, 1:2]], dim=1)  # 顶边
         
-        # yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
-        #            maxs=[self.geo_span[1][1], self.time_span[1]],
-        #            num=bc_num)
+        yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
+                   maxs=[self.geo_span[1][1], self.time_span[1]],
+                   num=bc_num)
         
 
-        # left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=xts.device), 
-        #                 yts[:, 0:1], 
-        #                 yts[:, 1:2]], dim=1)  # 左边
+        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=yts.device), 
+                        yts[:, 0:1], 
+                        yts[:, 1:2]], dim=1)  # 左边
 
-        # right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=xts.device), 
-        #                 yts[:, 0:1], 
-        #                 yts[:, 1:2]], dim=1)  # 右边
+        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=yts.device), 
+                        yts[:, 0:1], 
+                        yts[:, 1:2]], dim=1)  # 右边
 
-        xyts = torch.cat([xyts, top,], dim=0)
+        xyts = torch.cat([xyts, left, right, top], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -116,7 +116,9 @@ class GeoTimeSampler:
 
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_semi_circle_data(radius=0.1, num=ic_num, center=[0, 0.])
+        xys_local = pfp.make_lhs_sampling_data(mins=[-0.1, 0],
+                                          maxs=[0.1, 0.1,],
+                                          num=ic_num)
         xys = torch.cat([xys, xys_local], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1), self.time_span[0], device=xys.device)], dim=1)
         return xyts.float().requires_grad_(True)
@@ -217,14 +219,14 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
         net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
-        data = geotime.requires_grad_(True)
+        data = torch.cat([geotime, anchors],
+                         dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]
@@ -236,10 +238,8 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        writer.add_figure("sampling", fig, epoch)
 
 
     ac_residual, ch_residual = net.net_pde(data)
