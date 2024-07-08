@@ -145,7 +145,7 @@ BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
 EPOCHS = config.getint("TRAIN", "EPOCHS")
 ALPHA = config.getfloat("TRAIN", "ALPHA")
 LR = config.getfloat("TRAIN", "LR")
-num_seg = config.getint("TRAIN", "NUM_SEG")
+# num_seg = config.getint("TRAIN", "NUM_SEG")
 
 ALPHA_PHI = config.getfloat("PARAM", "ALPHA_PHI")
 OMEGA_PHI = config.getfloat("PARAM", "OMEGA_PHI")

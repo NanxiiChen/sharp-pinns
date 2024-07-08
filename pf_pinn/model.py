@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import time
 import configparser
 
+from .efficient_kan import KAN
+
+
 config = configparser.ConfigParser()
 config.read("config.ini")
 
@@ -139,15 +142,17 @@ class PFPINN(torch.nn.Module):
                                    create_graph=True, retain_graph=True)[0]
 
     def make_layers(self):
-        layers = []
-        for i in range(len(self.sizes) - 1):
+        # layers = []
+        # for i in range(len(self.sizes) - 1):
 
-            linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
-            torch.nn.init.xavier_normal_(linear_layer.weight)
-            layers.append((f"linear{i}", linear_layer))
-            if i != len(self.sizes) - 2:
-                layers.append((f"act{i}", self.act()))
-        return OrderedDict(layers)
+        #     linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
+        #     torch.nn.init.xavier_normal_(linear_layer.weight)
+        #     layers.append((f"linear{i}", linear_layer))
+        #     if i != len(self.sizes) - 2:
+        #         layers.append((f"act{i}", self.act()))
+        # return OrderedDict(layers)
+        kan_layer = KAN([3, 16, 16, 2])
+        return kan_layer
 
     def forward(self, x):
         # y_spatial = self.spatial_embedding(x[:, :-1])
@@ -270,6 +275,7 @@ class PFPINN(torch.nn.Module):
             + AC2 * dg_dphi - AC3 * nabla2phi \
 
         return [ac/1e8, ch*1e3]
+        # return [ac, ch]
 
     def gradient(self, loss):
         # compute gradient of loss w.r.t. model parameters

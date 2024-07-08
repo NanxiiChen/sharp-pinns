@@ -246,7 +246,7 @@ class KAN(torch.nn.Module):
         scale_noise=0.1,
         scale_base=1.0,
         scale_spline=1.0,
-        base_activation=torch.nn.SiLU,
+        base_activation=torch.nn.Tanh,
         grid_eps=0.02,
         grid_range=[-1, 1],
     ):

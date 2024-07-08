@@ -20,7 +20,7 @@ now = LOG_NAME
 if LOG_NAME == "None":
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     # now = "fourier-feather"
-save_root = "debugs/"
+save_root = "/root/tf-logs/"
 writer = SummaryWriter(log_dir=save_root + now)
 
 
