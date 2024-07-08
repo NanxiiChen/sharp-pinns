@@ -70,13 +70,13 @@ class GeoTimeSampler:
                                           num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
 
-        # xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
-        #            maxs=[self.geo_span[0][1], self.time_span[1]],
-        #            num=bc_num)
+        xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
+                   maxs=[self.geo_span[0][1], self.time_span[1]],
+                   num=bc_num)
         
-        # top = torch.cat([xts[:, 0:1], 
-        #                 torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
-        #                 xts[:, 1:2]], dim=1)  # 顶边
+        top = torch.cat([xts[:, 0:1], 
+                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
+                        xts[:, 1:2]], dim=1)  # 顶边
         
         # yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
         #            maxs=[self.geo_span[1][1], self.time_span[1]],
@@ -91,7 +91,7 @@ class GeoTimeSampler:
         #                 yts[:, 0:1], 
         #                 yts[:, 1:2]], dim=1)  # 右边
 
-        # xyts = torch.cat([xyts, top, left, right], dim=0)
+        xyts = torch.cat([xyts, top,], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -212,76 +212,80 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
 for epoch in range(EPOCHS):
     net.train()
+    need_causal = False
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-                                        method=method)
+        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+        #                                 method=method)
         net.train()
-        data = torch.cat([geotime, anchors],
-                         dim=0).detach().requires_grad_(True)
-        # data = geotime.requires_grad_(True)
+        # data = torch.cat([geotime, anchors],
+        #                  dim=0).detach().requires_grad_(True)
+        data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]
-        # indices = split_temporal_coords_into_segments(data[:, -1],
-        #                                               time_span,
-        #                                               num_seg)
+        if need_causal:
+            indices = split_temporal_coords_into_segments(data[:, -1],
+                                                          time_span,
+                                                          num_seg)
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        writer.add_figure("sampling", fig, epoch)
+        # writer.add_figure("sampling", fig, epoch)
 
 
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
+    if need_causal:
 
-    # ac_seg_loss = torch.zeros(num_seg, device=net.device)
-    # ch_seg_loss = torch.zeros(num_seg, device=net.device)
+        ac_seg_loss = torch.zeros(num_seg, device=net.device)
+        ch_seg_loss = torch.zeros(num_seg, device=net.device)
 
-    # for seg_idx, data_idx in enumerate(indices):
-    #     ac_seg_residual = ac_residual[data_idx]
-    #     ch_seg_residual = ch_residual[data_idx]
-    #     ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
-    #     ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
+        for seg_idx, data_idx in enumerate(indices):
+            ac_seg_residual = ac_residual[data_idx]
+            ch_seg_residual = ch_residual[data_idx]
+            ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
+            ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
 
-    # ac_causal_weights = torch.zeros(num_seg, device=net.device)
-    # ch_causal_weights = torch.zeros(num_seg, device=net.device)
-    # for seg_idx in range(num_seg):
-    #     if seg_idx == 0:
-    #         ac_causal_weights[seg_idx] = 1
-    #         ch_causal_weights[seg_idx] = 1
-    #     else:
-    #         ac_causal_weights[seg_idx] = torch.exp(
-    #             -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).item()
-    #         ch_causal_weights[seg_idx] = torch.exp(
-    #             -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
+        ac_causal_weights = torch.zeros(num_seg, device=net.device)
+        ch_causal_weights = torch.zeros(num_seg, device=net.device)
+        for seg_idx in range(num_seg):
+            if seg_idx == 0:
+                ac_causal_weights[seg_idx] = 1
+                ch_causal_weights[seg_idx] = 1
+            else:
+                ac_causal_weights[seg_idx] = torch.exp(
+                    -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).item()
+                ch_causal_weights[seg_idx] = torch.exp(
+                    -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).item()
 
-    # if ac_causal_weights[-1] > causal_configs["min_thresh"] \
-    #     and ch_causal_weights[-1] > causal_configs["min_thresh"]:
-    #     causal_configs["eps"] *= causal_configs["step"]
-    #     print(f"epoch {epoch}: "
-    #           f"increase eps to {causal_configs['eps']:.2e}")
-        
-    # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-    #     or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
-    #     causal_configs["eps"] /= causal_configs["step"]
-    #     print(f"epoch {epoch}: "
-    #           f"decrease eps to {causal_configs['eps']:.2e}")
+        if ac_causal_weights[-1] > causal_configs["min_thresh"] \
+            and ch_causal_weights[-1] > causal_configs["min_thresh"]:
+            causal_configs["eps"] *= causal_configs["step"]
+            print(f"epoch {epoch}: "
+                  f"increase eps to {causal_configs['eps']:.2e}")
+            
+        if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+            or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+            causal_configs["eps"] /= causal_configs["step"]
+            print(f"epoch {epoch}: "
+                  f"decrease eps to {causal_configs['eps']:.2e}")
 
 
-    # ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
-    # ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
-    ac_loss = torch.mean(ac_residual**2)
-    ch_loss = torch.mean(ch_residual**2)
+        ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
+        ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
+    else:
+        ac_loss = torch.mean(ac_residual**2)
+        ch_loss = torch.mean(ch_residual**2)
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
 
@@ -317,16 +321,16 @@ for epoch in range(EPOCHS):
         writer.add_scalar("weight/ch_weight", ch_weight, epoch)
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
         writer.add_scalar("weight/ic_weight", ic_weight, epoch)
-
-        # fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-        # ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
-        # ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
-        # ax.set_title(f"epoch: {epoch} "
-        #              f"eps: {causal_configs['eps']:.2e}")
-        # ax.legend(loc="upper right")
-        # # close the figure
-        # plt.close(fig)
-        # writer.add_figure("fig/causal_weights", fig, epoch)
+        if need_causal:
+            fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+            ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
+            ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
+            ax.set_title(f"epoch: {epoch} "
+                         f"eps: {causal_configs['eps']:.2e}")
+            ax.legend(loc="upper right")
+            # close the figure
+            plt.close(fig)
+            writer.add_figure("fig/causal_weights", fig, epoch)
         
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
 
