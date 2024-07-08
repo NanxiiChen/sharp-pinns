@@ -117,7 +117,7 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
         xys_local = pfp.make_semi_circle_data(radius=0.1,
-                                              num=ic_num*2,
+                                              num=ic_num*4,
                                               center=[0, 0.])
         xys_local_left = xys_local.clone()
         xys_local_left[:, 0:1] -= 0.15

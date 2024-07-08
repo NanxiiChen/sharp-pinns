@@ -48,7 +48,6 @@ LOG_NAME = None
 ### 1d-dissolution driven
  
 ```ini
-
 [PARAM]
 ALPHA_PHI = 1.03e-4
 OMEGA_PHI = 1.76e7
