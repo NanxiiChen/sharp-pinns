@@ -247,7 +247,7 @@ class KAN(torch.nn.Module):
         scale_base=1.0,
         scale_spline=1.0,
         base_activation=torch.nn.Tanh,
-        grid_eps=0.02,
+        grid_eps=0.2,
         grid_range=[-1, 1],
     ):
         super(KAN, self).__init__()

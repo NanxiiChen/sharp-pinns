@@ -94,7 +94,7 @@ class GeoTimeSampler:
                         yts[:, 0:1], 
                         yts[:, 1:2]], dim=1)  # 右边
 
-        xyts = torch.cat([xyts_left, xyts_right, top, left, right], dim=0)
+        xyts = torch.cat([xyts_left, xyts_right, left, top, right], dim=0)
 
         return xyts.float().requires_grad_(True)
 

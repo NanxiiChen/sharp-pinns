@@ -142,17 +142,17 @@ class PFPINN(torch.nn.Module):
                                    create_graph=True, retain_graph=True)[0]
 
     def make_layers(self):
-        # layers = []
-        # for i in range(len(self.sizes) - 1):
+        layers = []
+        for i in range(len(self.sizes) - 1):
 
-        #     linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
-        #     torch.nn.init.xavier_normal_(linear_layer.weight)
-        #     layers.append((f"linear{i}", linear_layer))
-        #     if i != len(self.sizes) - 2:
-        #         layers.append((f"act{i}", self.act()))
-        # return OrderedDict(layers)
-        kan_layer = KAN([3, 16, 16, 2])
-        return kan_layer
+            linear_layer = torch.nn.Linear(self.sizes[i], self.sizes[i + 1])
+            torch.nn.init.xavier_normal_(linear_layer.weight)
+            layers.append((f"linear{i}", linear_layer))
+            if i != len(self.sizes) - 2:
+                layers.append((f"act{i}", self.act()))
+        return OrderedDict(layers)
+        # kan_layer = KAN([2, 32, 32, 32, 2])
+        # return kan_layer
 
     def forward(self, x):
         # y_spatial = self.spatial_embedding(x[:, :-1])
@@ -272,9 +272,9 @@ class PFPINN(torch.nn.Module):
 
         ch = dc_dt - CH1 * nabla2c + CH1 * (CSE - CLE) * nabla2_h_phi
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
-            + AC2 * dg_dphi - AC3 * nabla2phi \
+            + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e8, ch*1e3]
+        return [ac/1e9, ch*1e3]
         # return [ac, ch]
 
     def gradient(self, loss):
