@@ -134,7 +134,7 @@ geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
-    sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
+    # sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
     act=torch.nn.Tanh
 )
 

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import time
 import configparser
 
-from .efficient_kan import KAN
+# from .efficient_kan import KAN
 
 
 config = configparser.ConfigParser()
@@ -94,6 +94,39 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
         y_high = self.spatial_high_embedding(x[:, :-1])
         y_temporal = self.temporal_embedding(x[:, -1:])
         return torch.cat([y_low, y_high, y_temporal], dim=1)
+    
+    
+class ModifiedMLP(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim)
+        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim)
+        
+        self.hidden_layers = torch.nn.ModuleList([
+            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+        
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        u = self.act(self.gate_layer_1(x))
+        v = self.act(self.gate_layer_2(x))
+        for layer in self.hidden_layers:
+            x = self.act(layer(x))
+            x = x * u + (1 - x) * v
+        return self.out_layer(x)
+    
+    
+# if __name__ == "__main__":
+#     model = ModifiedMLP(3, 32, 2, 4, alpha=0.8)
+#     x = torch.randn(10, 3)
+#     y = model(x)
+#     print(y)
+        
+
+
 
 
 # class FourierEmbedding(torch.nn.Module):
@@ -116,7 +149,7 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
 class PFPINN(torch.nn.Module):
     def __init__(
         self,
-        sizes: list,
+        # sizes: list,
         act=torch.nn.Tanh,
         embedding_features=20,
     ):
@@ -124,10 +157,12 @@ class PFPINN(torch.nn.Module):
         self.device = torch.device("cuda"
                                    if torch.cuda.is_available()
                                    else "cpu")
-        self.sizes = sizes
+        # self.sizes = sizes
         self.act = act
         self.embedding_features = embedding_features
-        self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
+        # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
+        self.model = self.make_modified_mlp_layers().to(self.device)
+        
 
         # self.embedding = FourierEmbedding(DIM, embedding_features)
         # self.embedding = MultiScaleFourierEmbedding(DIM+1, embedding_features).to(self.device)
@@ -151,8 +186,14 @@ class PFPINN(torch.nn.Module):
             if i != len(self.sizes) - 2:
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
-        # kan_layer = KAN([2, 32, 32, 32, 2])
-        # return kan_layer
+    
+    # def make_kan_layers(self):
+    #     kan_layer = KAN([2, 32, 32, 32, 2])
+    #     return kan_layer
+    
+    def make_modified_mlp_layers(self):
+        modified_mlp = ModifiedMLP(3, 64, 2, 4)
+        return modified_mlp
 
     def forward(self, x):
         # y_spatial = self.spatial_embedding(x[:, :-1])
@@ -274,7 +315,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e9, ch*1e3]
+        return [ac/1e6, ch*1e3]
         # return [ac, ch]
 
     def gradient(self, loss):
@@ -572,3 +613,11 @@ class PFPINN(torch.nn.Module):
 #     segments = causal_weightor.split_temporal_coords_into_segments(
 #         time_coords, time_span=(0, 1))
 #     print(segments)
+
+
+# if __name__ == "__main__":
+#     model = PFPINN()
+#     x = torch.randn(10, 3)
+#     y = model(x)
+#     print(y)
+#     # print(model)
