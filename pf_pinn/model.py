@@ -6,7 +6,11 @@ import matplotlib.pyplot as plt
 import time
 import configparser
 
-# from .efficient_kan import KAN
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from .efficient_kan import KAN
 
 
 config = configparser.ConfigParser()
@@ -119,6 +123,9 @@ class ModifiedMLP(torch.nn.Module):
         return self.out_layer(x)
     
     
+    
+    
+    
 # if __name__ == "__main__":
 #     model = ModifiedMLP(3, 32, 2, 4, alpha=0.8)
 #     x = torch.randn(10, 3)
@@ -162,6 +169,7 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         self.model = self.make_modified_mlp_layers().to(self.device)
+        # self.model = self.make_kan_layers().to(self.device)
         
 
         # self.embedding = FourierEmbedding(DIM, embedding_features)
@@ -187,12 +195,12 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
     
-    # def make_kan_layers(self):
-    #     kan_layer = KAN([2, 32, 32, 32, 2])
-    #     return kan_layer
+    def make_kan_layers(self):
+        kan_layer = KAN([3, 32, 32, 32, 2])
+        return kan_layer
     
     def make_modified_mlp_layers(self):
-        modified_mlp = ModifiedMLP(3, 64, 2, 4)
+        modified_mlp = ModifiedMLP(3, 200, 2, 4)
         return modified_mlp
 
     def forward(self, x):
@@ -315,7 +323,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e6, ch*1e3]
+        return [ac/1e9, ch*1e3]
         # return [ac, ch]
 
     def gradient(self, loss):
