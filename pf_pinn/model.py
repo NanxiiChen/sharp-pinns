@@ -158,7 +158,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=20,
+        embedding_features=8,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -200,7 +200,7 @@ class PFPINN(torch.nn.Module):
         return kan_layer
     
     def make_modified_mlp_layers(self):
-        modified_mlp = ModifiedMLP(3, 200, 2, 4)
+        modified_mlp = ModifiedMLP(3, 16, 2, 4)
         return modified_mlp
 
     def forward(self, x):

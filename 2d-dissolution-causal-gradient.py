@@ -91,7 +91,7 @@ class GeoTimeSampler:
                         yts[:, 0:1], 
                         yts[:, 1:2]], dim=1)  # 右边
 
-        xyts = torch.cat([xyts, left, right, top], dim=0)
+        xyts = torch.cat([xyts, top, left, right], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -127,7 +127,7 @@ geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
-    sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
+    # sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
     act=torch.nn.Tanh
 )
 
