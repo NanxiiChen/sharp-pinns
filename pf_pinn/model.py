@@ -123,7 +123,54 @@ class ModifiedMLP(torch.nn.Module):
         return self.out_layer(x)
     
     
-    
+class MultiScaleModifiedMLP(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        # 低频信息处理分支
+        self.low_freq_branch = torch.nn.Sequential(
+            torch.nn.Linear(in_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh()
+        )
+        
+        # 高频信息处理分支
+        self.high_freq_branch = torch.nn.Sequential(
+            torch.nn.Linear(in_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh()
+        )
+        
+        # 注意力机制
+        self.attention = torch.nn.Sequential(
+            torch.nn.Linear(2 * hidden_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, 1),
+            torch.nn.Sigmoid()
+        )
+        
+        # 主干网络
+        self.hidden_layers = torch.nn.ModuleList([
+            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+        
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        low_freq_features = self.low_freq_branch(x)
+        high_freq_features = self.high_freq_branch(x)
+        
+        # 特征融合
+        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
+        attention_weights = self.attention(combined_features)
+        x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
+        
+        for layer in self.hidden_layers:
+            x = self.act(layer(x))
+        
+        return self.out_layer(x)
     
     
 # if __name__ == "__main__":
@@ -168,7 +215,8 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
-        self.model = self.make_modified_mlp_layers().to(self.device)
+        # self.model = self.make_modified_mlp_layers().to(self.device)
+        self.model = self.make_multiscale_mlp_layers().to(self.device)
         # self.model = self.make_kan_layers().to(self.device)
         
 
@@ -200,8 +248,12 @@ class PFPINN(torch.nn.Module):
         return kan_layer
     
     def make_modified_mlp_layers(self):
-        modified_mlp = ModifiedMLP(3, 16, 2, 4)
+        modified_mlp = ModifiedMLP(3, 64, 2, 4)
         return modified_mlp
+    
+    def make_multiscale_mlp_layers(self):
+        multiscale_mlp = MultiScaleModifiedMLP(3, 64, 2, 4)
+        return multiscale_mlp
 
     def forward(self, x):
         # y_spatial = self.spatial_embedding(x[:, :-1])
@@ -442,11 +494,11 @@ class PFPINN(torch.nn.Module):
         else:
 
             fig, axes = plt.subplots(len(ts), 2, figsize=(15, 5*len(ts)))
+            mesh_tensor = torch.from_numpy(mesh_points).float()
             diffs = []
             for idx, tic in enumerate(ts):
-                tic_tensor = torch.ones(mesh_points.shape[0], 1)\
+                tic_tensor = torch.ones(mesh_tensor.shape[0], 1)\
                     .view(-1, 1) * tic * TIME_COEF
-                mesh_tensor = torch.from_numpy(mesh_points).float()
                 geotime = torch.cat([mesh_tensor, tic_tensor],
                                     dim=1).to(self.device)
                 with torch.no_grad():
