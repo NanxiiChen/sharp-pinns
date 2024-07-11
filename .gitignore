@@ -2,7 +2,6 @@ runs/
 .vscode/
 demo.*
 *.pt
-*.ipynb
 figures/
 debugs/
 causal/
