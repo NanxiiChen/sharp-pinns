@@ -342,7 +342,7 @@ class PFPINN(torch.nn.Module):
         # self.model = self.make_modified_mlp_layers().to(self.device)
         # self.model = self.make_multiscale_mlp_layers().to(self.device)
         # self.model = MultiScaleSelfAttentiondMLP(3, 32, 2, 3).to(self.device)
-        self.model = MultiScaleResNet(3, 128, 2, 8).to(self.device)
+        self.model = MultiScaleResNet(3, 128, 2, 6).to(self.device)
         
         # self.model = self.make_kan_layers().to(self.device)
         
