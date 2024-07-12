@@ -119,7 +119,7 @@ class GeoTimeSampler:
                                                  num=ic_num*4)
         xys_local_2 = pfp.make_lhs_sampling_data(mins=[-0.15, 0.35],
                                                  maxs=[0.15, 0.50],
-                                                 num=ic_num*4)
+                                                 num=ic_num*2)
         xys = torch.cat([xys, xys_local_1, xys_local_2], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
         return xyts.float().requires_grad_(True)
