@@ -81,16 +81,16 @@ class MultiScaleFourierEmbedding(torch.nn.Module):
         self.spatial_low_embedding = FourierEmbedding(
             in_features-1,
             embedding_features,
-            std/10
+            std/2
         )
         self.spatial_high_embedding = FourierEmbedding(
             in_features-1,
             embedding_features,
-            std*10
+            std*5
         )
         self.temporal_embedding = FourierEmbedding(
             1, embedding_features,
-            std*5,
+            std,
         )
 
     def forward(self, x):
@@ -152,7 +152,7 @@ class MultiScaleModifiedMLP(torch.nn.Module):
         
         # 主干网络
         self.hidden_layers = torch.nn.ModuleList([
-            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+            torch.nn.Linear(hidden_dim, hidden_dim) for idx in range(layers)
         ])
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
@@ -169,6 +169,130 @@ class MultiScaleModifiedMLP(torch.nn.Module):
         
         for layer in self.hidden_layers:
             x = self.act(layer(x))
+        
+        return self.out_layer(x)
+    
+class MultiScaleResNet(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        # 低频信息处理分支
+        self.low_freq_branch = torch.nn.Sequential(
+            torch.nn.Linear(in_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh()
+        )
+        
+        # 高频信息处理分支
+        self.high_freq_branch = torch.nn.Sequential(
+            torch.nn.Linear(in_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh()
+        )
+        
+        # 注意力机制
+        self.attention = torch.nn.Sequential(
+            torch.nn.Linear(2 * hidden_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, 1),
+            torch.nn.Sigmoid()
+        )
+        
+        # 主干网络
+        self.hidden_layers = torch.nn.ModuleList([
+            torch.nn.Linear(hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+        
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        low_freq_features = self.low_freq_branch(x)
+        high_freq_features = self.high_freq_branch(x)
+        
+        # 特征融合
+        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
+        attention_weights = self.attention(combined_features)
+        x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
+        
+        # 在主干网络中加入残差连接
+        for layer in self.hidden_layers:
+            identity = x
+            x = self.act(layer(x))
+            x = x + identity  # 添加残差连接
+        
+        return self.out_layer(x)
+    
+import torch
+
+class SelfAttention(torch.nn.Module):
+    def __init__(self, hidden_dim):
+        super().__init__()
+        self.query = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.key = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.value = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.scale = torch.sqrt(torch.FloatTensor([hidden_dim])).to("cuda")
+
+    def forward(self, x):
+        Q = self.query(x)
+        K = self.key(x)
+        V = self.value(x)
+        
+        # 计算注意力分数
+        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
+        attention_weights = torch.nn.functional.softmax(attention_scores, dim=-1)
+        
+        # 应用注意力权重
+        x = torch.matmul(attention_weights, V)
+        return x
+    
+
+class MultiScaleSelfAttentiondMLP(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.low_freq_branch = torch.nn.Sequential(
+            torch.nn.Linear(in_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh()
+        )
+        
+        self.high_freq_branch = torch.nn.Sequential(
+            torch.nn.Linear(in_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh()
+        )
+        
+        self.attention = torch.nn.Sequential(
+            torch.nn.Linear(2 * hidden_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, 1),
+            torch.nn.Sigmoid()
+        )
+        
+        self.hidden_layers = torch.nn.ModuleList()
+        for idx in range(layers):
+            self.hidden_layers.append(torch.nn.Linear(hidden_dim, hidden_dim))
+            self.hidden_layers.append(SelfAttention(hidden_dim))
+        
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        low_freq_features = self.low_freq_branch(x)
+        high_freq_features = self.high_freq_branch(x)
+        
+        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
+        attention_weights = self.attention(combined_features)
+        x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
+        
+        for layer in self.hidden_layers:
+            if isinstance(layer, torch.nn.Linear):
+                x = self.act(layer(x))
+            else:
+                x = layer(x)
         
         return self.out_layer(x)
     
@@ -205,7 +329,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=8,
+        embedding_features=16,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -216,7 +340,10 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.model = self.make_modified_mlp_layers().to(self.device)
-        self.model = self.make_multiscale_mlp_layers().to(self.device)
+        # self.model = self.make_multiscale_mlp_layers().to(self.device)
+        # self.model = MultiScaleSelfAttentiondMLP(3, 32, 2, 3).to(self.device)
+        self.model = MultiScaleResNet(3, 128, 2, 8).to(self.device)
+        
         # self.model = self.make_kan_layers().to(self.device)
         
 
@@ -243,17 +370,19 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
     
-    def make_kan_layers(self):
-        kan_layer = KAN([3, 32, 32, 32, 2])
-        return kan_layer
+    # def make_kan_layers(self):
+    #     kan_layer = KAN([3, 32, 32, 32, 2])
+    #     return kan_layer
     
-    def make_modified_mlp_layers(self):
-        modified_mlp = ModifiedMLP(3, 64, 2, 4)
-        return modified_mlp
+    # def make_modified_mlp_layers(self):
+    #     modified_mlp = ModifiedMLP(3, 64, 2, 4)
+    #     return modified_mlp
     
-    def make_multiscale_mlp_layers(self):
-        multiscale_mlp = MultiScaleModifiedMLP(3, 64, 2, 4)
-        return multiscale_mlp
+    # def make_multiscale_mlp_layers(self):
+    #     multiscale_mlp = MultiScaleModifiedMLP(3, 64, 2, 4)
+    #     return multiscale_mlp
+
+
 
     def forward(self, x):
         # y_spatial = self.spatial_embedding(x[:, :-1])

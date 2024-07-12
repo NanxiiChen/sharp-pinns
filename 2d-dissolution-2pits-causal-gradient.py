@@ -176,7 +176,7 @@ num_seg = config.getint("TRAIN", "NUM_SEG")
 causal_configs = {
     "eps": 1e-12,
     "min_thresh": 0.99,
-    "step": 2,
+    "step": 5,
     "mean_thresh": 0.5
 }
 
@@ -217,7 +217,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -230,6 +230,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
     net.train()
     # need_causal = not (causal_configs["eps"] > 1e-10 and epoch > 12000)
+    # need_causal = epoch <= 30000
     need_causal = False
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
