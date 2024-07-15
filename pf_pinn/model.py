@@ -89,11 +89,42 @@ class PirateNet(torch.nn.Module):
             block(x, u, v)
         return torch.sigmoid(self.out_layer(x))
         
-    
         
         
-        
+# import torch
+# from torch.nn import MultiheadAttention, BatchNorm1d, Linear, Module, ModuleList, Tanh, Sigmoid
 
+# class EnhancedMLP(Module):
+#     def __init__(self, in_dim, hidden_dim, out_dim, layers, n_heads):
+#         super().__init__()
+#         self.gate_layer = Linear(in_dim, hidden_dim)
+        
+#         self.attention = MultiheadAttention(embed_dim=hidden_dim, num_heads=n_heads, batch_first=True)
+        
+#         self.hidden_layers = ModuleList([
+#             Linear(hidden_dim, hidden_dim) for _ in range(layers)
+#         ])
+        
+#         self.batch_norms = ModuleList([
+#             BatchNorm1d(hidden_dim) for _ in range(layers)
+#         ])
+        
+#         self.out_layer = Linear(hidden_dim, out_dim)
+#         self.act = Tanh()
+#         self.sigmoid = Sigmoid()
+        
+#     def forward(self, x):
+#         x = self.act(self.gate_layer(x))
+        
+#         # 注意力机制应用于批处理的每个样本
+#         attn_output, _ = self.attention(x, x, x)
+#         x = attn_output + x  # 残差连接
+        
+#         for layer, batch_norm in zip(self.hidden_layers, self.batch_norms):
+#             x = self.act(layer(x))
+#             x = batch_norm(x)
+        
+#         return self.sigmoid(self.out_layer(x))
 
 
     
@@ -115,11 +146,11 @@ class ModifiedMLP(torch.nn.Module):
         u = self.act(self.gate_layer_1(x))
         v = self.act(self.gate_layer_2(x))
         for layer in self.hidden_layers:
-            x = torch.sigmoid(layer(x))
+            x = self.act(layer(x))
             x = x * u + (1 - x) * v
         return torch.sigmoid(self.out_layer(x))
     
-
+    
 class MultiscaleAttentionNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
@@ -200,7 +231,8 @@ class PFPINN(torch.nn.Module):
         
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
-        self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
+        # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
+        self.model = ModifiedMLP(3, 128, 2, 4).to(self.device)
 
 
 
