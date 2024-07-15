@@ -10,7 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .efficient_kan import KAN
+# from .efficient_kan import KAN
+from .embedding import *
 
 
 config = configparser.ConfigParser()
@@ -34,77 +35,67 @@ TIME_SPAN = eval(config.get("TRAIN", "TIME_SPAN"))
 GEO_SPAN = eval(config.get("TRAIN", "GEO_SPAN"))
 
 
-class FourierEmbedding(torch.nn.Module):
-    def __init__(self, in_features, embedding_features, std=1, method="trig"):
+class PirateBlock(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim):
         super().__init__()
-        self.method = method
-        self.linear = torch.nn.Linear(in_features, embedding_features)
-        if self.method == "trig":
-            self.linear.weight.data = \
-                torch.randn(embedding_features, in_features) * std * np.pi
-            self.linear.bias.data.zero_()
-            for param in self.linear.parameters():
-                param.requires_grad = False
-        elif self.method == "linear":
-            # torch.nn.init.xavier_normal_(self.linear.weight)
-            self.linear.weight.data = \
-                torch.randn(embedding_features, in_features) * std * np.pi
-            pass
-
-
-
-    def forward(self, x):
-        x = self.linear(x)
-        method = self.method
-        if method == "trig":
-            return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
-        elif method == "linear":
-            return x
-        else:
-            raise ValueError("Ivalid method.")
-
-
-class SpatialTemporalFourierEmbedding(torch.nn.Module):
-
-    def __init__(self, in_features, embedding_features, std=2):
-        super().__init__()
-        self.spatial_embedding = FourierEmbedding(in_features-1,
-                                                  embedding_features, std,
-                                                  method="trig")
-        self.temporal_embedding = FourierEmbedding(1, embedding_features, std,
-                                                   method="linear")
-
-    def forward(self, x):
-        y_spatial = self.spatial_embedding(x[:, :-1])
-        y_temporal = self.temporal_embedding(x[:, -1:])
-        return torch.cat([y_spatial, y_temporal], dim=1)
-
-
-class MultiScaleFourierEmbedding(torch.nn.Module):
-
-    def __init__(self, in_features, embedding_features=8, std=1):
-        super().__init__()
-        self.spatial_low_embedding = FourierEmbedding(
-            in_features-1,
-            embedding_features,
-            std/2
-        )
-        self.spatial_high_embedding = FourierEmbedding(
-            in_features-1,
-            embedding_features,
-            std*5
-        )
-        self.temporal_embedding = FourierEmbedding(
-            1, embedding_features,
-            std,
-        )
-
-    def forward(self, x):
-        y_low = self.spatial_low_embedding(x[:, :-1])
-        y_high = self.spatial_high_embedding(x[:, :-1])
-        y_temporal = self.temporal_embedding(x[:, -1:])
-        return torch.cat([y_low, y_high, y_temporal], dim=1)
+        self.layer_f = torch.nn.Linear(in_dim, hidden_dim)
+        self.layer_g = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.layer_h = torch.nn.Linear(hidden_dim, in_dim)
+        self.alpha = torch.nn.Parameter(torch.rand(1))
+        # All the weights are initialized by the Glorot scheme, 
+        # while biases are initialized to zero
+        self.layer_f.weight.data = torch.nn.init.xavier_normal_(self.layer_f.weight.data)
+        self.layer_g.weight.data = torch.nn.init.xavier_normal_(self.layer_g.weight.data)
+        self.layer_h.weight.data = torch.nn.init.xavier_normal_(self.layer_h.weight.data)
+        self.layer_f.bias.data.zero_()
+        self.layer_g.bias.data.zero_()
+        self.layer_h.bias.data.zero_()
+        self.act = torch.nn.Tanh()
+        
+        
+    def forward(self, x, u, v):
+        identity = x
+        f = self.act(self.layer_f(x))
+        x = f * u + (1 - f) * v
+        g = self.act(self.layer_g(x))
+        x = g * u + (1 - g) * v
+        h = self.act(self.layer_h(x))    
+        return self.alpha * h + (1 - self.alpha) * identity
     
+    
+        
+        
+
+class PirateNet(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, num_blocks):
+        super().__init__()
+        self.embedding = SpatialTemporalFourierEmbedding(in_dim, hidden_dim)
+        self.inp_layer = torch.nn.Linear(in_dim, hidden_dim)
+        self.gate_layer_1 = torch.nn.Linear(hidden_dim*4, hidden_dim)
+        self.gate_layer_2 = torch.nn.Linear(hidden_dim*4, hidden_dim)
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        self.blocks = torch.nn.ModuleList([
+            PirateBlock(hidden_dim, hidden_dim) for idx in range(num_blocks)
+        ])
+        
+        
+    def forward(self, x):
+        phi = self.embedding(x)
+        x = self.act(self.inp_layer(x))
+        u = self.act(self.gate_layer_1(phi))
+        v = self.act(self.gate_layer_2(phi))
+        for block in self.blocks:
+            block(x, u, v)
+        return torch.sigmoid(self.out_layer(x))
+        
+    
+        
+        
+        
+
+
+
     
 class ModifiedMLP(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
@@ -124,111 +115,9 @@ class ModifiedMLP(torch.nn.Module):
         u = self.act(self.gate_layer_1(x))
         v = self.act(self.gate_layer_2(x))
         for layer in self.hidden_layers:
-            x = self.act(layer(x))
+            x = torch.sigmoid(layer(x))
             x = x * u + (1 - x) * v
-        return self.out_layer(x)
-    
-    
-class MultiScaleModifiedMLP(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super().__init__()
-        # 低频信息处理分支
-        self.low_freq_branch = torch.nn.Sequential(
-            torch.nn.Linear(in_dim, hidden_dim),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.Tanh()
-        )
-        
-        # 高频信息处理分支
-        self.high_freq_branch = torch.nn.Sequential(
-            torch.nn.Linear(in_dim, hidden_dim),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.Tanh()
-        )
-        
-        # 注意力机制
-        self.attention = torch.nn.Sequential(
-            torch.nn.Linear(2 * hidden_dim, hidden_dim),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim, 1),
-            torch.nn.Sigmoid()
-        )
-        
-        # 主干网络
-        self.hidden_layers = torch.nn.ModuleList([
-            torch.nn.Linear(hidden_dim, hidden_dim) for idx in range(layers)
-        ])
-        
-        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
-        
-    def forward(self, x):
-        low_freq_features = self.low_freq_branch(x)
-        high_freq_features = self.high_freq_branch(x)
-        
-        # 特征融合
-        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
-        attention_weights = self.attention(combined_features)
-        x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
-        
-        for layer in self.hidden_layers:
-            x = self.act(layer(x))
-        
-        return self.out_layer(x)
-    
-class MultiScaleResNet(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super().__init__()
-        # 低频信息处理分支
-        self.low_freq_branch = torch.nn.Sequential(
-            torch.nn.Linear(in_dim, hidden_dim),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.Tanh()
-        )
-        
-        # 高频信息处理分支
-        self.high_freq_branch = torch.nn.Sequential(
-            torch.nn.Linear(in_dim, hidden_dim),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.Tanh()
-        )
-        
-        # 注意力机制
-        self.attention = torch.nn.Sequential(
-            torch.nn.Linear(2 * hidden_dim, hidden_dim),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim, 1),
-            torch.nn.Sigmoid()
-        )
-        
-        # 主干网络
-        self.hidden_layers = torch.nn.ModuleList([
-            torch.nn.Linear(hidden_dim, hidden_dim) for idx in range(layers)
-        ])
-        
-        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
-        
-    def forward(self, x):
-        low_freq_features = self.low_freq_branch(x)
-        high_freq_features = self.high_freq_branch(x)
-        
-        # 特征融合
-        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
-        attention_weights = self.attention(combined_features)
-        x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
-        
-        # 在主干网络中加入残差连接
-        for layer in self.hidden_layers:
-            identity = x
-            x = self.act(layer(x))
-            x = x + identity  # 添加残差连接
-        
-        return self.out_layer(x)
+        return torch.sigmoid(self.out_layer(x))
     
 
 class MultiscaleAttentionNet(torch.nn.Module):
@@ -237,8 +126,6 @@ class MultiscaleAttentionNet(torch.nn.Module):
         # 低频信息处理分支
         self.low_freq_branch = torch.nn.Sequential(
             torch.nn.Linear(in_dim, hidden_dim//2),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden_dim//2, hidden_dim//2),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden_dim//2, hidden_dim),
             torch.nn.Tanh()
@@ -259,15 +146,13 @@ class MultiscaleAttentionNet(torch.nn.Module):
             torch.nn.Linear(hidden_dim, 1),
             torch.nn.Sigmoid()
         )
-        
+        # self.inp_layer = torch.nn.Linear(in_dim, hidden_dim)
         # 主干网络与注意力机制
         self.hidden_layers = torch.nn.ModuleList()
         self.attention_layers = torch.nn.ModuleList()
         for idx in range(layers):
             self.hidden_layers.append(torch.nn.Linear(hidden_dim, hidden_dim))
             self.attention_layers.append(torch.nn.Sequential(
-                torch.nn.Linear(hidden_dim, hidden_dim),
-                torch.nn.Tanh(),
                 torch.nn.Linear(hidden_dim, hidden_dim),
                 torch.nn.Sigmoid()
             ))
@@ -283,40 +168,16 @@ class MultiscaleAttentionNet(torch.nn.Module):
         combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
         attention_weights = self.attention(combined_features)
         x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
-        
+
+        x = self.act(self.inp_layer(x))
         for layer, attention_layer in zip(self.hidden_layers, self.attention_layers):
+            identity = x
             x = self.act(layer(x))
             attention_weights = attention_layer(x)
-            x = attention_weights * x
+            x = attention_weights * x + identity
         
-        return self.out_layer(x)
+        return torch.sigmoid(self.out_layer(x))
     
-    
-# if __name__ == "__main__":
-#     model = ModifiedMLP(3, 32, 2, 4, alpha=0.8)
-#     x = torch.randn(10, 3)
-#     y = model(x)
-#     print(y)
-        
-
-
-
-
-# class FourierEmbedding(torch.nn.Module):
-#     def __init__(self, input_dim, embedding_dim, ):
-#         super().__init__()
-#         self.omega = torch.arange(1, embedding_dim+1, device="cuda").float().view(1, -1) * np.pi / 10
-#         self.omega_mat = torch.cat([self.omega] * input_dim, dim=0).requires_grad_(False)
-
-
-#     def forward(self, geotime):
-#         # geotime: [x, y, t]
-#         # only on x, y
-#         return torch.cat([
-#             torch.cos(geotime[:, :-1] @ self.omega_mat),
-#             torch.sin(geotime[:, :-1] @ self.omega_mat),
-#             geotime[:, -1:] @ self.omega
-#         ], dim=1)
 
 
 class PFPINN(torch.nn.Module):
@@ -324,7 +185,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=16,
+        embedding_features=32,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -334,20 +195,14 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
-        # self.model = self.make_modified_mlp_layers().to(self.device)
-        # self.model = self.make_multiscale_mlp_layers().to(self.device)
         # self.model = MultiScaleSelfAttentiondMLP(3, 32, 2, 3).to(self.device)
-        self.model = MultiscaleAttentionNet(48, 64, 2, 4).to(self.device)
+        # self.model = ModifiedMLP(3, 128, 2, 4).to(self.device)
         
-        # self.model = self.make_kan_layers().to(self.device)
-        
+        # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
+        self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
 
-        # self.embedding = FourierEmbedding(DIM, embedding_features)
-        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
-        # self.spatial_embedding = FourierEmbedding(DIM, embedding_features, std=1, method="trig").to(self.device)
-        # self.temporal_embedding = FourierEmbedding(1, embedding_features, std=1, method="trig").to(self.device)
-        # self.out_layer = torch.nn.Linear(sizes[-1], 2).to(self.device)
-        # self.out_layer = torch.nn.Linear(self.sizes[-1], 2).to(self.device)
+
 
     def auto_grad(self, up, down):
         return torch.autograd.grad(inputs=down, outputs=up,
@@ -369,9 +224,9 @@ class PFPINN(torch.nn.Module):
     #     kan_layer = KAN([3, 32, 32, 32, 2])
     #     return kan_layer
     
-    def make_modified_mlp_layers(self):
-        modified_mlp = ModifiedMLP(3, 64, 2, 4)
-        return modified_mlp
+#     def make_modified_mlp_layers(self):
+#         modified_mlp = ModifiedMLP(3, 64, 2, 4)
+#         return modified_mlp
     
     # def make_multiscale_mlp_layers(self):
     #     multiscale_mlp = MultiScaleModifiedMLP(3, 64, 2, 4)
@@ -387,7 +242,7 @@ class PFPINN(torch.nn.Module):
         # # merge by pointwise multiplication
         # out = self.out_layer(out_spatial * out_temporal)
         # return out
-        x = self.embedding(x)
+        # x = self.embedding(x)
         return self.model(x)
 
     def net_u(self, x):
@@ -641,7 +496,7 @@ class PFPINN(torch.nn.Module):
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
                                  title="error t = " + str(round(tic, 2)))
                 diffs.append(diff)
-            acc = 1 - np.sqrt(np.mean(np.array(diffs)**2))
+            acc = np.mean(np.array(diffs)**2)
 
         return fig, axes, acc
 

@@ -76,11 +76,11 @@ class GeoTimeSampler:
         xyts_top = xyts.clone()
         xyts_top[:, 1:2] += 0.475
 
-        xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
-                   maxs=[self.geo_span[0][1], self.time_span[1]],
-                   num=bc_num)
-        top = torch.cat([xts[:, 0:1], torch.full(
-                    (xts.shape[0], 1), self.geo_span[1][1], device="cuda"), xts[:, 1:2]], dim=1)  # 顶边
+        # xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
+        #            maxs=[self.geo_span[0][1], self.time_span[1]],
+        #            num=bc_num)
+        # top = torch.cat([xts[:, 0:1], torch.full(
+        #             (xts.shape[0], 1), self.geo_span[1][1], device="cuda"), xts[:, 1:2]], dim=1)  # 顶边
 
         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
                 maxs=[self.geo_span[1][1], self.time_span[1]],
@@ -90,7 +90,7 @@ class GeoTimeSampler:
         right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
                             [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
 
-        xyts = torch.cat([xyts_left, xyts_right, xyts_top, top, left, right], dim=0)
+        xyts = torch.cat([xyts_left, xyts_right, xyts_top, left, right], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -219,7 +219,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))

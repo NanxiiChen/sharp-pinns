@@ -16,7 +16,7 @@ config.read("config.ini")
 
 
 # now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-now = "2pits-causal-gradient-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "2pits-modifiedmlp-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
 
@@ -177,7 +177,7 @@ causal_configs = {
     "eps": 1e-12,
     "min_thresh": 0.99,
     "step": 5,
-    "mean_thresh": 0.5
+    "mean_thresh": 0.4
 }
 
 
@@ -217,7 +217,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -243,6 +243,7 @@ for epoch in range(EPOCHS):
         net.train()
         data = torch.cat([geotime, anchors],
                          dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
 
         # shuffle
         data = data[torch.randperm(len(data))]

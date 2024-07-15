@@ -178,6 +178,51 @@ ADAPTIVE_SAMPLING = "rar"
 FORWARD_BATCH_SIZE = 2000
 ```
 
+### 3pits
+```ini
+[PARAM]
+ALPHA_PHI = 1.03e-4
+OMEGA_PHI = 1.76e7
+MM = 7.94e-18
+DD = 8.5e-10
+AA = 5.35e7
+LP = 2.0
+CSE = 1.
+CLE = 5100/1.43e5
+
+[TRAIN]
+DIM = 2
+DRIVEN = "dissolution"
+GEO_COEF = 1e4
+TIME_COEF = 1e-2
+TIME_SPAN = (0, 0.15)
+GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
+NETWORK_SIZE = [3] + [80]*4 + [2]
+NUM_SEG = 10
+
+MESH_POINTS = "./data/2d-3pits/mesh_points.npy"
+REF_PREFIX = "./data/2d-3pits/sol-"
+TARGET_TIMES = [0.00, 0.51, 2.30, 14.34]
+
+NTK_BATCH_SIZE = 100
+BREAK_INTERVAL = 200
+EPOCHS = 800000
+ALPHA = 1.0
+LR = 5e-4
+
+GEOTIME_SHAPE = [15, 15, 20]
+BCDATA_SHAPE = 200
+ICDATA_SHAPE = 500
+SAMPLING_STRATEGY = ["grid_transition", "lhs", "lhs"]
+
+RAR_BASE_SHAPE = 30000
+RAR_SHAPE = 4000
+
+
+RESUME = None
+ADAPTIVE_SAMPLING = "rar"
+FORWARD_BATCH_SIZE = 2000
+```
 
 ## Citation
 ```bibtex
