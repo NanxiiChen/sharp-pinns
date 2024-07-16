@@ -167,19 +167,17 @@ class MultiScaleFeatureFusion(torch.nn.Module):
 class ModifiedMLP(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        self.gate_layer_1 = torch.nn.Linear(hidden_dim, hidden_dim)
-        self.gate_layer_2 = torch.nn.Linear(hidden_dim, hidden_dim)
-        # self.feature_fusion = MultiScaleFeatureFusion(in_dim, hidden_dim)
+        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim)
+        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim)
         
         self.hidden_layers = torch.nn.ModuleList([
-            torch.nn.Linear(hidden_dim, hidden_dim) for idx in range(layers)
+            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
         ])
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
         self.act = torch.nn.Tanh()
         
     def forward(self, x):
-        # x = self.feature_fusion(x)
         u = self.act(self.gate_layer_1(x))
         v = self.act(self.gate_layer_2(x))
         for layer in self.hidden_layers:
