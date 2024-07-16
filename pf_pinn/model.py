@@ -127,32 +127,8 @@ class PirateNet(torch.nn.Module):
 #         return self.sigmoid(self.out_layer(x))
 
 
-    
-class ModifiedMLP(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super().__init__()
-        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim)
-        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim)
-        
-        self.hidden_layers = torch.nn.ModuleList([
-            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
-        ])
-        
-        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-
-        self.act = torch.nn.Tanh()
-        
-    def forward(self, x):
-        u = self.act(self.gate_layer_1(x))
-        v = self.act(self.gate_layer_2(x))
-        for layer in self.hidden_layers:
-            x = self.act(layer(x))
-            x = x * u + (1 - x) * v
-        return torch.sigmoid(self.out_layer(x))
-    
-    
-class MultiscaleAttentionNet(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+class MultiScaleFeatureFusion(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim):
         super().__init__()
         # 低频信息处理分支
         self.low_freq_branch = torch.nn.Sequential(
@@ -177,7 +153,45 @@ class MultiscaleAttentionNet(torch.nn.Module):
             torch.nn.Linear(hidden_dim, 1),
             torch.nn.Sigmoid()
         )
-        # self.inp_layer = torch.nn.Linear(in_dim, hidden_dim)
+        
+    def forward(self, x):
+        low_freq_features = self.low_freq_branch(x)
+        high_freq_features = self.high_freq_branch(x)
+        
+        # 特征融合
+        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
+        attention_weights = self.attention(combined_features)
+        return attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
+
+    
+class ModifiedMLP(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.gate_layer_1 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.gate_layer_2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        # self.feature_fusion = MultiScaleFeatureFusion(in_dim, hidden_dim)
+        
+        self.hidden_layers = torch.nn.ModuleList([
+            torch.nn.Linear(hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+        
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        # x = self.feature_fusion(x)
+        u = self.act(self.gate_layer_1(x))
+        v = self.act(self.gate_layer_2(x))
+        for layer in self.hidden_layers:
+            x = self.act(layer(x))
+            x = x * u + (1 - x) * v
+        return torch.sigmoid(self.out_layer(x))
+
+    
+class MultiscaleAttentionNet(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.feature_fusion = MultiScaleFeatureFusion(in_dim, hidden_dim)
         # 主干网络与注意力机制
         self.hidden_layers = torch.nn.ModuleList()
         self.attention_layers = torch.nn.ModuleList()
@@ -192,15 +206,7 @@ class MultiscaleAttentionNet(torch.nn.Module):
         self.act = torch.nn.Tanh()
         
     def forward(self, x):
-        low_freq_features = self.low_freq_branch(x)
-        high_freq_features = self.high_freq_branch(x)
-        
-        # 特征融合
-        combined_features = torch.cat((low_freq_features, high_freq_features), dim=1)
-        attention_weights = self.attention(combined_features)
-        x = attention_weights * low_freq_features + (1 - attention_weights) * high_freq_features
-
-        x = self.act(self.inp_layer(x))
+        x = self.feature_fusion(x)
         for layer, attention_layer in zip(self.hidden_layers, self.attention_layers):
             identity = x
             x = self.act(layer(x))
@@ -232,7 +238,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(3, 128, 2, 4).to(self.device)
+        self.model = MultiscaleAttentionNet(3, 200, 2, 4).to(self.device)
 
 
 
