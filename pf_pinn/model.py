@@ -236,7 +236,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = MultiscaleAttentionNet(3, 200, 2, 4).to(self.device)
+        self.model = ModifiedMLP(3, 128, 2, 4).to(self.device)
 
 
 

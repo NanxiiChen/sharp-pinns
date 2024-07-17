@@ -313,14 +313,16 @@ for epoch in range(EPOCHS):
               f"ac_weight {ac_weight:.2e}, ch_weight {ch_weight:.2e}, "
               f"bc_weight {bc_weight:.2e}, ic_weight {ic_weight:.2e}")
 
-        writer.add_scalar("loss/ac_loss", ac_loss, epoch)
-        writer.add_scalar("loss/ch_loss", ch_loss, epoch)
-        writer.add_scalar("loss/bc_loss", bc_loss, epoch)
-        writer.add_scalar("loss/ic_loss", ic_loss, epoch)
+        writer.add_scalar("loss/ac_loss", ac_loss.item(), epoch)
+        writer.add_scalar("loss/ch_loss", ch_loss.item(), epoch)
+        writer.add_scalar("loss/bc_loss", bc_loss.item(), epoch)
+        writer.add_scalar("loss/ic_loss", ic_loss.item(), epoch)
+        writer.add_scalar("loss/weighted_loss", losses.item(), epoch)
         writer.add_scalar("weight/ac_weight", ac_weight, epoch)
         writer.add_scalar("weight/ch_weight", ch_weight, epoch)
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
         writer.add_scalar("weight/ic_weight", ic_weight, epoch)
+        
         if need_causal:
             fig, ax = plt.subplots(1, 1, figsize=(5, 5))
             ax.plot(ac_causal_weights.cpu().numpy(), label="ac")

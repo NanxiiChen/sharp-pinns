@@ -195,14 +195,14 @@ DIM = 2
 DRIVEN = "dissolution"
 GEO_COEF = 1e4
 TIME_COEF = 1e-2
-TIME_SPAN = (0, 0.15)
+TIME_SPAN = (0, 0.2)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
 NETWORK_SIZE = [3] + [80]*4 + [2]
 NUM_SEG = 10
 
 MESH_POINTS = "./data/2d-3pits/mesh_points.npy"
 REF_PREFIX = "./data/2d-3pits/sol-"
-TARGET_TIMES = [0.00, 0.51, 2.30, 14.34]
+TARGET_TIMES = [0.00, 0.51, 2.30, 18.43]
 
 NTK_BATCH_SIZE = 100
 BREAK_INTERVAL = 200
