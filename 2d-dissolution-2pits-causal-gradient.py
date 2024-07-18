@@ -36,7 +36,7 @@ class GeoTimeSampler:
             self.bc_sample(bc_num, strateges[1]), \
             self.ic_sample(ic_num, strateges[2])
 
-    def in_sample(self, in_num, strategy: str = "lhs",):
+    def in_sample(self, in_num, strategy: str = "grid_transition",):
 
         if strategy == "lhs":
             func = pfp.make_lhs_sampling_data
@@ -186,13 +186,15 @@ def ic_func(xts):
     #     torch.sqrt((xts[:, 0:1] - 0.15)**2 + xts[:, 1:2]**2),
     #     torch.sqrt((xts[:, 0:1] + 0.15)**2 + xts[:, 1:2]**2)
     # ).detach()
-    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
-                   + xts[:, 1:2]**2).detach()
-    with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
-        h_phi = -2 * phi**3 + 3 * phi**2
-        c = h_phi * CSE
+    r2 = (torch.abs(xts[:, 0:1]) - 0.15)**2 \
+                   + xts[:, 1:2]**2
+    c = phi = (r2 > 0.05**2).float()
+ 
+    # with torch.no_grad():
+    #     phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
+    #                               torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
+    #     h_phi = -2 * phi**3 + 3 * phi**2
+    #     c = h_phi * CSE
     return torch.cat([phi, c], dim=1)
 
 
@@ -217,7 +219,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.75)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -255,10 +257,10 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+        fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
         # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
         #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        writer.add_figure("sampling", fig, epoch)
 
 
     ac_residual, ch_residual = net.net_pde(data)
@@ -340,6 +342,7 @@ for epoch in range(EPOCHS):
         writer.add_scalar("loss/ch_loss", ch_loss, epoch)
         writer.add_scalar("loss/bc_loss", bc_loss, epoch)
         writer.add_scalar("loss/ic_loss", ic_loss, epoch)
+        writer.add_scalar("loss/total", losses, epoch)
         writer.add_scalar("weight/ac_weight", ac_weight, epoch)
         writer.add_scalar("weight/ch_weight", ch_weight, epoch)
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
