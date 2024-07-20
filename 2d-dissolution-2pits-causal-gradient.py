@@ -182,19 +182,14 @@ causal_configs = {
 
 
 def ic_func(xts):
-    # r = torch.min(
-    #     torch.sqrt((xts[:, 0:1] - 0.15)**2 + xts[:, 1:2]**2),
-    #     torch.sqrt((xts[:, 0:1] + 0.15)**2 + xts[:, 1:2]**2)
-    # ).detach()
-    r2 = (torch.abs(xts[:, 0:1]) - 0.15)**2 \
-                   + xts[:, 1:2]**2
-    c = phi = (r2 > 0.05**2).float()
- 
-    # with torch.no_grad():
-    #     phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-    #                               torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
-    #     h_phi = -2 * phi**3 + 3 * phi**2
-    #     c = h_phi * CSE
+    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2 \
+                   + xts[:, 1:2]**2)
+    # c = phi = (r2 > 0.05**2).float()
+    with torch.no_grad():
+        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
+                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
+        h_phi = -2 * phi**3 + 3 * phi**2
+        c = h_phi * CSE
     return torch.cat([phi, c], dim=1)
 
 
@@ -219,7 +214,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.75)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.6)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))

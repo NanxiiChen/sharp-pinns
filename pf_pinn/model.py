@@ -178,7 +178,7 @@ class ModifiedMLP(torch.nn.Module):
         for layer in self.hidden_layers:
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        # return torch.sigmoid(self.out_layer(x))
+        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
         return torch.sigmoid(self.out_layer(x))
 
 class MultiscaleAttentionNet(torch.nn.Module):
