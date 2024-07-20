@@ -83,12 +83,12 @@ class GeoTimeSampler:
         #             (xts.shape[0], 1), self.geo_span[1][1], device="cuda"), xts[:, 1:2]], dim=1)  # 顶边
 
         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
-                maxs=[self.geo_span[1][1], self.time_span[1]],
-                num=bc_num)
+                   maxs=[self.geo_span[1][1], self.time_span[1]],
+                   num=bc_num)
         left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
-                            [0], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 左边
+                                     [0], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 左边
         right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
-                            [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
+                                      [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
 
         xyts = torch.cat([xyts_left, xyts_right, xyts_top, left, right], dim=0)
 
@@ -121,7 +121,8 @@ class GeoTimeSampler:
                                                  maxs=[0.15, 0.50],
                                                  num=ic_num*2)
         xys = torch.cat([xys, xys_local_1, xys_local_2], dim=0)
-        xyts = torch.cat([xys, torch.full((xys.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
+        xyts = torch.cat(
+            [xys, torch.full((xys.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
         return xyts.float().requires_grad_(True)
 
 
@@ -206,7 +207,6 @@ def bc_func(xts):
     return torch.cat([phi, c], dim=1).detach()
 
 
-
 def split_temporal_coords_into_segments(ts, time_span, num_seg):
     # Split the temporal coordinates into segments
     # Return the indexes of the temporal coordinates
@@ -250,8 +250,8 @@ for epoch in range(EPOCHS):
         data = data[torch.randperm(len(data))]
         if need_causal:
             indices = split_temporal_coords_into_segments(data[:, -1],
-                                                        time_span,
-                                                        num_seg)
+                                                          time_span,
+                                                          num_seg)
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
@@ -261,11 +261,10 @@ for epoch in range(EPOCHS):
         #             bbox_inches='tight', dpi=300)
         writer.add_figure("sampling", fig, epoch)
 
-
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    
+
     if need_causal:
         ac_seg_loss = torch.zeros(num_seg, device=net.device)
         ch_seg_loss = torch.zeros(num_seg, device=net.device)
@@ -275,7 +274,6 @@ for epoch in range(EPOCHS):
             ch_seg_residual = ch_residual[data_idx]
             ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
             ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
-
 
         ac_causal_weights = torch.zeros(num_seg, device=net.device)
         ch_causal_weights = torch.zeros(num_seg, device=net.device)
@@ -290,26 +288,25 @@ for epoch in range(EPOCHS):
                     -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
 
         if ac_causal_weights[-1] > causal_configs["min_thresh"] \
-            and ch_causal_weights[-1] > causal_configs["min_thresh"]:
+                and ch_causal_weights[-1] > causal_configs["min_thresh"]:
             causal_configs["eps"] *= causal_configs["step"]
             print(f"epoch {epoch}: "
                   f"increase eps to {causal_configs['eps']:.2e}")
             writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
         if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-            or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+                or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
             causal_configs["eps"] /= causal_configs["step"]
             print(f"epoch {epoch}: "
                   f"decrease eps to {causal_configs['eps']:.2e}")
             writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
 
-
         ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
         ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
-        
+
     else:
         ac_loss = torch.mean(ac_residual**2)
         ch_loss = torch.mean(ch_residual**2)
-        
+
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
 
@@ -324,13 +321,11 @@ for epoch in range(EPOCHS):
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + ic_weight * ic_loss
 
-
     opt.zero_grad()
     losses.backward()
     opt.step()
     scheduler.step()
-    
-    
+
     if epoch % BREAK_INTERVAL == 0:
         print(f"epoch {epoch}: ac_loss {ac_loss:.2e}, ch_loss {ch_loss:.2e}, "
               f"bc_loss {bc_loss:.2e}, ic_loss {ic_loss:.2e}, "
@@ -351,12 +346,12 @@ for epoch in range(EPOCHS):
             ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
             ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
             ax.set_title(f"epoch: {epoch} "
-                        f"eps: {causal_configs['eps']:.2e}")
+                         f"eps: {causal_configs['eps']:.2e}")
             ax.legend(loc="upper right")
             # close the figure
             plt.close(fig)
             writer.add_figure("fig/causal_weights", fig, epoch)
-        
+
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
 
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
@@ -364,7 +359,7 @@ for epoch in range(EPOCHS):
         fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
                                         mesh_points=MESH_POINTS,
                                         ref_prefix=REF_PREFIX)
-        
+
         torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)

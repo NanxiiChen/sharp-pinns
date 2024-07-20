@@ -238,8 +238,8 @@ for epoch in range(EPOCHS):
         data = data[torch.randperm(len(data))]
         if need_causal:
             indices = split_temporal_coords_into_segments(data[:, -1],
-                                                        time_span,
-                                                        num_seg)
+                                                          time_span,
+                                                          num_seg)
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
@@ -252,7 +252,7 @@ for epoch in range(EPOCHS):
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    
+
     if need_causal:
 
         ac_seg_loss = torch.zeros(num_seg, device=net.device)
@@ -280,20 +280,20 @@ for epoch in range(EPOCHS):
                 and ch_causal_weights[-1] > causal_configs["min_thresh"]:
             causal_configs["eps"] *= causal_configs["step"]
             print(f"epoch {epoch}: "
-                f"increase eps to {causal_configs['eps']:.2e}")
+                  f"increase eps to {causal_configs['eps']:.2e}")
 
         if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
                 or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
             causal_configs["eps"] /= causal_configs["step"]
             print(f"epoch {epoch}: "
-                f"decrease eps to {causal_configs['eps']:.2e}")
+                  f"decrease eps to {causal_configs['eps']:.2e}")
 
         ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
         ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
     else:
         ac_loss = torch.mean(ac_residual**2)
         ch_loss = torch.mean(ch_residual**2)
-        
+
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
 
@@ -327,12 +327,12 @@ for epoch in range(EPOCHS):
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
         writer.add_scalar("weight/ic_weight", ic_weight, epoch)
         if need_causal:
-            
+
             fig, ax = plt.subplots(1, 1, figsize=(5, 5))
             ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
             ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
             ax.set_title(f"epoch: {epoch} "
-                        f"eps: {causal_configs['eps']:.2e}")
+                         f"eps: {causal_configs['eps']:.2e}")
             ax.legend(loc="upper right")
             # close the figure
             plt.close(fig)

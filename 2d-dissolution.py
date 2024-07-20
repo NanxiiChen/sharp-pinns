@@ -70,28 +70,27 @@ class GeoTimeSampler:
         xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
                    maxs=[self.geo_span[0][1], self.time_span[1]],
                    num=bc_num)
-        
-        top = torch.cat([xts[:, 0:1], 
-                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device), 
+
+        top = torch.cat([xts[:, 0:1],
+                        torch.full(
+                            (xts.shape[0], 1), self.geo_span[1][1], device=xts.device),
                         xts[:, 1:2]], dim=1)  # 顶边
-        
+
         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
                    maxs=[self.geo_span[1][1], self.time_span[1]],
                    num=bc_num)
-        
 
-        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=xts.device), 
-                        yts[:, 0:1], 
-                        yts[:, 1:2]], dim=1)  # 左边
+        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=xts.device),
+                          yts[:, 0:1],
+                          yts[:, 1:2]], dim=1)  # 左边
 
-        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=xts.device), 
-                        yts[:, 0:1], 
-                        yts[:, 1:2]], dim=1)  # 右边
+        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=xts.device),
+                           yts[:, 0:1],
+                           yts[:, 1:2]], dim=1)  # 右边
 
         xyts = torch.cat([xyts, top, left, right], dim=0)
 
         return xyts.float().requires_grad_(True)
-
 
     def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[[-0.1, 0.1], [0, 0.1]]):
         if strategy == "lhs":
@@ -108,15 +107,19 @@ class GeoTimeSampler:
                                              num=ic_num)
         elif strategy == "grid_transition":
             xys = pfp.make_uniform_grid_data_transition(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                                        maxs=[self.geo_span[0][1], self.geo_span[1][1]],
-                num=ic_num)
+                                                        maxs=[
+                                                            self.geo_span[0][1], self.geo_span[1][1]],
+                                                        num=ic_num)
 
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_semi_circle_data(radius=0.1, num=ic_num, center=[0, 0.])
+        xys_local = pfp.make_semi_circle_data(
+            radius=0.1, num=ic_num, center=[0, 0.])
         xys = torch.cat([xys, xys_local], dim=0)
-        xyts = torch.cat([xys, torch.full((xys.shape[0], 1), self.time_span[0], device=xys.device)], dim=1)
+        xyts = torch.cat([xys, torch.full((xys.shape[0], 1),
+                         self.time_span[0], device=xys.device)], dim=1)
         return xyts.float().requires_grad_(True)
+
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
@@ -177,6 +180,7 @@ def bc_func(xts):
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
+
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
 scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.9)
@@ -218,9 +222,8 @@ for epoch in range(EPOCHS):
     FORWARD_BATCH_SIZE = config.getint("TRAIN", "FORWARD_BATCH_SIZE")
 
     ac_residual, ch_residual = net.net_pde(data)
-    bc_forward = net.net_u(bcdata)  
+    bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-
 
     if epoch % BREAK_INTERVAL == 0:
 
@@ -248,13 +251,15 @@ for epoch in range(EPOCHS):
 
         writer.add_figure("fig/predict", fig, epoch)
         writer.add_scalar("acc", acc, epoch)
-    
 
-    ac_loss_weighted = criteria(ac_residual, torch.zeros_like(ac_residual)) * ac_weight
-    ch_loss_weighted = criteria(ch_residual, torch.zeros_like(ch_residual)) * ch_weight
-    ic_loss_weighted = criteria(bc_forward, bc_func(bcdata).detach()) * ic_weight
-    bc_loss_weighted = criteria(ic_forward, ic_func(icdata).detach()) * bc_weight
-
+    ac_loss_weighted = criteria(
+        ac_residual, torch.zeros_like(ac_residual)) * ac_weight
+    ch_loss_weighted = criteria(
+        ch_residual, torch.zeros_like(ch_residual)) * ch_weight
+    ic_loss_weighted = criteria(
+        bc_forward, bc_func(bcdata).detach()) * ic_weight
+    bc_loss_weighted = criteria(
+        ic_forward, ic_func(icdata).detach()) * bc_weight
 
     losses = ic_loss_weighted \
         + bc_loss_weighted \

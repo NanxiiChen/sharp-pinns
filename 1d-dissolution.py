@@ -52,13 +52,12 @@ class GeoTimeSampler:
 
         return geotime.float().requires_grad_(True)
 
-
     def bc_sample(self, bc_num, strategy: str = "lhs",):
         device = "cuda"  # Specify the device for tensors
 
         if strategy == "lhs":
             ts = (lhs(1, bc_num) *
-                (self.time_span[1] - self.time_span[0]) + self.time_span[0]).reshape(-1, 1).to(device)
+                  (self.time_span[1] - self.time_span[0]) + self.time_span[0]).reshape(-1, 1).to(device)
         elif strategy == "grid":
             ts = torch.linspace(self.time_span[0], self.time_span[1], bc_num, device=device)[
                 1:-1].reshape(-1, 1)
@@ -71,8 +70,10 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xt_l = torch.full((ts.shape[0], 1), self.geo_span[0], device=device).reshape(-1, 1)
-        xt_r = torch.full((ts.shape[0], 1), self.geo_span[1], device=device).reshape(-1, 1)
+        xt_l = torch.full(
+            (ts.shape[0], 1), self.geo_span[0], device=device).reshape(-1, 1)
+        xt_r = torch.full(
+            (ts.shape[0], 1), self.geo_span[1], device=device).reshape(-1, 1)
         ts = ts.to(device)  # Ensure ts is on the correct device
         xt_l = torch.cat([xt_l, ts], dim=1)
         xt_r = torch.cat([xt_r, ts], dim=1)
@@ -84,7 +85,7 @@ class GeoTimeSampler:
 
         if strategy == "lhs":
             xs = (torch.rand(ic_num, 1, device=device) *
-                (self.geo_span[1] - self.geo_span[0]) + self.geo_span[0])
+                  (self.geo_span[1] - self.geo_span[0]) + self.geo_span[0])
             xs_local = (torch.rand(ic_num, 1, device=device) *
                         (local_area[1] - local_area[0]) + local_area[0])
         elif strategy == "grid":
