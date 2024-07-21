@@ -231,7 +231,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(DIM+1, 200, 2, 4).to(self.device)
+        self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
 
 
 
@@ -385,7 +385,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e6, ch*1e3]
+        return [ac/1e9, ch*1e3]
         # return [ac, ch]
 
     def gradient(self, loss):
