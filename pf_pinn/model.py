@@ -178,8 +178,9 @@ class ModifiedMLP(torch.nn.Module):
         for layer in self.hidden_layers:
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        return torch.sigmoid(self.out_layer(x))
+        return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        # return torch.sigmoid(self.out_layer(x))
+        # return self.out_layer(x)
 
 class MultiscaleAttentionNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
@@ -230,7 +231,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(3, 200, 2, 4).to(self.device)
+        self.model = ModifiedMLP(DIM+1, 200, 2, 4).to(self.device)
 
 
 
@@ -384,7 +385,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e9, ch*1e3]
+        return [ac/1e6, ch*1e3]
         # return [ac, ch]
 
     def gradient(self, loss):
@@ -650,16 +651,19 @@ class PFPINN(torch.nn.Module):
     def compute_gradient_weight(self, losses):
 
         grads = np.zeros(len(losses))
-
         for idx, loss in enumerate(losses):
-            # zero_grad
             self.zero_grad()
             grad = self.gradient(loss)
             grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
-            # grads[idx] = torch.mean(torch.abs(grad)).item()
-            # grads[idx] = torch.max(torch.abs(grad)).item()
 
-        return np.sum(grads) / grads
+        weights = np.sum(grads) / grads
+        # sometimes the gradients are too small or too large
+        # so the weights might be NaN or Inf
+        # we need to clip them
+        weights = np.nan_to_num(weights)
+        weights = np.clip(weights, 0, 1e20)
+        
+        return weights
 
 
 # class CausalWeightor:

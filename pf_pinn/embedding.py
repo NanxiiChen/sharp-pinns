@@ -88,24 +88,33 @@ import torch.nn.functional as F
 #         return torch.cat([y_low, y_high, y_temporal], dim=1)
 
 class FourierFeatureEmbedding(nn.Module):
-    def __init__(self, in_features, out_features, scale=1):
+    def __init__(self, in_features, out_features, scale=1, method="trig"):
         super().__init__()
-        self.weights = nn.Parameter(torch.randn(in_features, out_features) * np.pi * scale, requires_grad=False)
+        if method == "trig":
+            self.weights = nn.Parameter(torch.randn(in_features, out_features) * np.pi * scale, requires_grad=False)
+        elif method == "linear":
+            self.weights = nn.Parameter(torch.randn(in_features, 2*out_features) * np.pi * scale, requires_grad=False)
+        self.method = method
     
     def forward(self, x):
         x = torch.matmul(x, self.weights)
-        return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+        if self.method == "trig":
+            return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+        elif self.method == "linear":
+            return x
+        
     
 class SpatialTemporalFourierEmbedding(nn.Module):
     # output shape is 4 * out_features
     def __init__(self, in_features, out_features, scale=1):
         super().__init__()
         self.spatial_embedding = FourierFeatureEmbedding(in_features-1, out_features, scale)
-        self.temporal_embedding = FourierFeatureEmbedding(1, out_features, scale)
+        self.temporal_embedding = FourierFeatureEmbedding(1, out_features, scale, method="linear")
         # self.temporal_embedding = nn.Sequential(
         #     nn.Linear(1, out_features),
         #     nn.Tanh()
         # )
+        # self.temporal_embedding[0].weight.data = torch.randn(out_features, 1) * scale * np.pi
 
     def forward(self, x):
         y_spatial = self.spatial_embedding(x[:, :-1])

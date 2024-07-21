@@ -46,9 +46,15 @@ class GeoTimeSampler:
             func = pfp.make_uniform_grid_data_transition
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        geotime = func(mins=[self.geo_span[0], self.time_span[0]],
-                       maxs=[self.geo_span[1], self.time_span[1]],
-                       num=in_num)
+        
+        mins = [self.geo_span[0], self.time_span[0]]
+        maxs = [self.geo_span[1], np.sqrt(self.time_span[1])]
+        
+        # geotime = func(mins=[self.geo_span[0], self.time_span[0]],
+        #                maxs=[self.geo_span[1], self.time_span[1]],
+        #                num=in_num)
+        geotime = func(mins=mins, maxs=maxs, num=in_num)
+        geotime[:, -1] = geotime[:, -1]**2
 
         return geotime.float().requires_grad_(True)
 
@@ -78,7 +84,6 @@ class GeoTimeSampler:
         xt_l = torch.cat([xt_l, ts], dim=1)
         xt_r = torch.cat([xt_r, ts], dim=1)
         xts = torch.cat([xt_l, xt_r], dim=0)
-        xts = xt_r
         return xts.float().requires_grad_(True)
 
     def ic_sample(self, ic_num, strategy: str = "lhs", local_area=[0.3, 0.5]):
@@ -116,7 +121,7 @@ geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
-    sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
+    # sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
     act=torch.nn.Tanh
 )
 
@@ -203,7 +208,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
 for epoch in range(EPOCHS):
     net.train()
-    need_causal = True
+    need_causal = False
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
