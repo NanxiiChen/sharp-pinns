@@ -170,7 +170,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.SiLU()
+        self.act = torch.nn.Tanh()
         
     def forward(self, x):
         u = self.act(self.gate_layer_1(x))
