@@ -178,8 +178,8 @@ class ModifiedMLP(torch.nn.Module):
         for layer in self.hidden_layers:
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.out_layer(x))
+        # return torch.tanh(30*self.out_layer(x)) / 2 + 1/2
+        return torch.sigmoid(self.out_layer(x))
 
 class MultiscaleAttentionNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
@@ -230,7 +230,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(256, 128, 2, 6).to(self.device)
+        self.model = ModifiedMLP(256, 128, 2, 8).to(self.device)
         # self.model = KAN([3, 32, 32, 2]).to(self.device)
 
 
