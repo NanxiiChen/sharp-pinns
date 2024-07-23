@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from .efficient_kan import KAN
+from .efficient_kan import KAN
 from .embedding import *
 
 
@@ -170,7 +170,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.SiLU()
         
     def forward(self, x):
         u = self.act(self.gate_layer_1(x))
@@ -180,7 +180,6 @@ class ModifiedMLP(torch.nn.Module):
             x = x * u + (1 - x) * v
         return torch.tanh(self.out_layer(x)) / 2 + 1/2
         # return torch.sigmoid(self.out_layer(x))
-        # return self.out_layer(x)
 
 class MultiscaleAttentionNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
@@ -215,7 +214,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=32,
+        embedding_features=128,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -227,11 +226,12 @@ class PFPINN(torch.nn.Module):
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.model = MultiScaleSelfAttentiondMLP(3, 32, 2, 3).to(self.device)
         # self.model = ModifiedMLP(3, 128, 2, 4).to(self.device)
-        
+        self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
+        self.model = ModifiedMLP(256, 128, 2, 6).to(self.device)
+        # self.model = KAN([3, 32, 32, 2]).to(self.device)
 
 
 
@@ -273,7 +273,7 @@ class PFPINN(torch.nn.Module):
         # # merge by pointwise multiplication
         # out = self.out_layer(out_spatial * out_temporal)
         # return out
-        # x = self.embedding(x)
+        x = self.embedding(x)
         return self.model(x)
 
     def net_u(self, x):

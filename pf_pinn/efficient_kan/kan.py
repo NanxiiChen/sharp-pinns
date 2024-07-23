@@ -14,7 +14,7 @@ class KANLinear(torch.nn.Module):
         scale_base=1.0,
         scale_spline=1.0,
         enable_standalone_scale_spline=True,
-        base_activation=torch.nn.SiLU,
+        base_activation=torch.nn.Tanh,
         grid_eps=0.02,
         grid_range=[-1, 1],
     ):
@@ -276,7 +276,7 @@ class KAN(torch.nn.Module):
             if update_grid:
                 layer.update_grid(x)
             x = layer(x)
-        return x
+        return torch.sigmoid(x)
 
     def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
         return sum(
