@@ -45,15 +45,15 @@ class GeoTimeSampler:
             func = pfp.make_uniform_grid_data_transition
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-        geotime = func(mins=mins, maxs=maxs, num=in_num)
-        geotime[:, -1] = geotime[:, -1]**2
+        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        # maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        # geotime = func(mins=mins, maxs=maxs, num=in_num)
+        # geotime[:, -1] = geotime[:, -1]**2
         
-        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-        #                maxs=[self.geo_span[0][1], self.geo_span[1]
-        #                      [1], self.time_span[1]],
-        #                num=in_num)
+        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+                       maxs=[self.geo_span[0][1], self.geo_span[1]
+                             [1], self.time_span[1]],
+                       num=in_num)
 
         return geotime.float().requires_grad_(True)
 
@@ -224,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))

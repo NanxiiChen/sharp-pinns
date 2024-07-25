@@ -170,7 +170,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.SiLU()
         
     def forward(self, x):
         u = self.act(self.gate_layer_1(x))
@@ -178,13 +178,14 @@ class ModifiedMLP(torch.nn.Module):
         for layer in self.hidden_layers:
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        # return torch.tanh(30*self.out_layer(x)) / 2 + 1/2
-        return torch.sigmoid(self.out_layer(x))
+        return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        # return torch.sigmoid(self.out_layer(x))
 
 class MultiscaleAttentionNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        self.feature_fusion = MultiScaleFeatureFusion(in_dim, hidden_dim)
+        # self.feature_fusion = MultiScaleFeatureFusion(in_dim, hidden_dim)
+        self.feature_fusion = torch.nn.Linear(in_dim, hidden_dim)
         # 主干网络与注意力机制
         self.hidden_layers = torch.nn.ModuleList()
         self.attention_layers = torch.nn.ModuleList()
@@ -206,7 +207,7 @@ class MultiscaleAttentionNet(torch.nn.Module):
             attention_weights = attention_layer(x)
             x = attention_weights * x + identity
         
-        return torch.sigmoid(self.out_layer(x))
+        return torch.tanh(self.out_layer(x)) / 2 + 1/2
 
 
 class PFPINN(torch.nn.Module):
@@ -230,7 +231,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(256, 128, 2, 8).to(self.device)
+        self.model = ModifiedMLP(256, 128, 2, 6).to(self.device)
         # self.model = KAN([3, 32, 32, 2]).to(self.device)
 
 
