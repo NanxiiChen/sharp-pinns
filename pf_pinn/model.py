@@ -170,7 +170,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.SiLU()
+        self.act = torch.nn.Tanh()
         
     def forward(self, x):
         u = self.act(self.gate_layer_1(x))
@@ -197,7 +197,7 @@ class MultiscaleAttentionNet(torch.nn.Module):
             ))
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.SiLU()
         
     def forward(self, x):
         x = self.feature_fusion(x)
@@ -231,7 +231,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(256, 128, 2, 6).to(self.device)
+        self.model = ModifiedMLP(256, 200, 2, 6).to(self.device)
         # self.model = KAN([3, 32, 32, 2]).to(self.device)
 
 
@@ -386,7 +386,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e9, ch*1e3]
+        return [ac/1e8, ch]
         # return [ac, ch]
 
     def gradient(self, loss):
