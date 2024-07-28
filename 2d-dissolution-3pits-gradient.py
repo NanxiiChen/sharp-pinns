@@ -224,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -262,10 +262,11 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #             bbox_inches='tight', dpi=300)
-        # writer.add_figure("sampling", fig, epoch)
+        if epoch % (10*BREAK_INTERVAL) == 0:
+            fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+            # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
+            #             bbox_inches='tight', dpi=300)
+            writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
