@@ -47,15 +47,15 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         
         
-        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-        # maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-        # geotime = func(mins=mins, maxs=maxs, num=in_num)
-        # geotime[:, -1] = geotime[:, -1]**2
+        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        geotime = func(mins=mins, maxs=maxs, num=in_num)
+        geotime[:, -1] = geotime[:, -1]**2
         
-        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-                       maxs=[self.geo_span[0][1], self.geo_span[1]
-                             [1], self.time_span[1]],
-                       num=in_num)
+        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+        #                maxs=[self.geo_span[0][1], self.geo_span[1]
+        #                      [1], self.time_span[1]],
+        #                num=in_num)
 
         return geotime.float().requires_grad_(True)
 

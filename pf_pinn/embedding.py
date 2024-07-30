@@ -87,8 +87,9 @@ import torch.nn.functional as F
 #         y_temporal = self.temporal_embedding(x[:, -1:])
 #         return torch.cat([y_low, y_high, y_temporal], dim=1)
 
+
 class FourierFeatureEmbedding(nn.Module):
-    def __init__(self, in_features, out_features, scale=1, method="trig"):
+    def __init__(self, in_features, out_features, scale=2, method="trig"):
         super().__init__()
         if method == "trig":
             self.weights = nn.Parameter(torch.randn(in_features, out_features) * np.pi * scale, requires_grad=False)

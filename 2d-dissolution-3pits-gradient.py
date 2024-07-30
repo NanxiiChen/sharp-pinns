@@ -177,7 +177,7 @@ num_seg = config.getint("TRAIN", "NUM_SEG")
 causal_configs = {
     "eps": 1e-12,
     "min_thresh": 0.99,
-    "step": 2,
+    "step": 5,
     "mean_thresh": 0.5
 }
 
@@ -224,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -343,6 +343,7 @@ for epoch in range(EPOCHS):
         writer.add_scalar("loss/ch_loss", ch_loss, epoch)
         writer.add_scalar("loss/bc_loss", bc_loss, epoch)
         writer.add_scalar("loss/ic_loss", ic_loss, epoch)
+        writer.add_scalar("loss/total", losses, epoch)
         writer.add_scalar("weight/ac_weight", ac_weight, epoch)
         writer.add_scalar("weight/ch_weight", ch_weight, epoch)
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)

@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .efficient_kan import KAN
+# from .efficient_kan import KAN
 from .embedding import *
 
 
@@ -183,23 +183,24 @@ class ModifiedMLP(torch.nn.Module):
             torch.nn.init.xavier_normal_(layer.weight)
         torch.nn.init.xavier_normal_(self.out_layer.weight)
         
-        
     def forward(self, x):
         u = self.act(self.gate_layer_1(x))
         v = self.act(self.gate_layer_2(x))
         for idx, layer in enumerate(self.hidden_layers):
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.out_layer(x))
+        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        return torch.sigmoid(self.out_layer(x))
         # return self.out_layer(x)
 
+        
 class MultiscaleAttentionNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
         # self.feature_fusion = MultiScaleFeatureFusion(in_dim, hidden_dim)
-        self.feature_fusion = torch.nn.Linear(in_dim, hidden_dim)
+        # self.feature_fusion = torch.nn.Linear(in_dim, hidden_dim)
         # 主干网络与注意力机制
+        self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
         self.hidden_layers = torch.nn.ModuleList()
         self.attention_layers = torch.nn.ModuleList()
         for idx in range(layers):
@@ -210,10 +211,11 @@ class MultiscaleAttentionNet(torch.nn.Module):
             ))
         
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.SiLU()
+        self.act = torch.nn.Tanh()
         
     def forward(self, x):
-        x = self.feature_fusion(x)
+        # x = self.feature_fusion(x)
+        x = self.act(self.in_layer(x))
         for layer, attention_layer in zip(self.hidden_layers, self.attention_layers):
             identity = x
             x = self.act(layer(x))
@@ -221,6 +223,7 @@ class MultiscaleAttentionNet(torch.nn.Module):
             x = attention_weights * x + identity
         
         return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        # return torch.sigmoid(self.out_layer(x))
 
 
 class PFPINN(torch.nn.Module):
@@ -242,8 +245,8 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(256, 128, 2, 8).to(self.device)
-        # self.model = KAN([3, 32, 32, 2]).to(self.device)
+        self.model = ModifiedMLP(256, 200, 2, 6).to(self.device)
+        # self.model = KAN([64, 32, 32, 2]).to(self.device)
 
 
 
@@ -397,7 +400,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e9, ch]
+        return [ac/1e9, ch*1e3]
         # return [ac, ch]
 
     def gradient(self, loss):
@@ -666,8 +669,8 @@ class PFPINN(torch.nn.Module):
         for idx, loss in enumerate(losses):
             self.zero_grad()
             grad = self.gradient(loss)
-            grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
-            # grads[idx] = torch.sqrt(torch.sum(torch.abs(grad))).item()
+            # grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
+            grads[idx] = torch.sum(torch.abs(grad)).item()
 
         weights = np.sum(grads) / grads
         # sometimes the gradients are too small or too large
