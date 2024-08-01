@@ -189,8 +189,8 @@ class ModifiedMLP(torch.nn.Module):
         for idx, layer in enumerate(self.hidden_layers):
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        return torch.sigmoid(self.out_layer(x))
+        return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        # return 1.2*torch.sigmoid(self.out_layer(x)) - 0.1
         # return self.out_layer(x)
 
         
@@ -231,7 +231,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=128,
+        embedding_features=64,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -245,7 +245,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(DIM+1, 128, 2, 4).to(self.device)
-        self.model = ModifiedMLP(256, 200, 2, 6).to(self.device)
+        self.model = ModifiedMLP(128, 200, 2, 6).to(self.device)
         # self.model = KAN([64, 32, 32, 2]).to(self.device)
 
 
@@ -295,7 +295,8 @@ class PFPINN(torch.nn.Module):
         # compute the pde solution `u`: [phi, c]
         x = x.to(self.device)
         return self.forward(x)
-
+    
+    
     def net_dev(self, x, on="y"):
         # compute the derivative of the pde solution `u` w.r.t. x: [dphi/dx, dc/dx] or [dphi/dy, dc/dy]
         x = x.to(self.device)
@@ -669,8 +670,8 @@ class PFPINN(torch.nn.Module):
         for idx, loss in enumerate(losses):
             self.zero_grad()
             grad = self.gradient(loss)
-            # grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
-            grads[idx] = torch.sum(torch.abs(grad)).item()
+            grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
+            # grads[idx] = torch.sum(torch.abs(grad)).item()
 
         weights = np.sum(grads) / grads
         # sometimes the gradients are too small or too large
