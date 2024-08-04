@@ -195,14 +195,14 @@ DIM = 2
 DRIVEN = "dissolution"
 GEO_COEF = 1e4
 TIME_COEF = 1e-2
-TIME_SPAN = (0, 0.1)
+TIME_SPAN = (0, 0.07)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
 NETWORK_SIZE = [3] + [80]*4 + [2]
-NUM_SEG = 5
+NUM_SEG = 8
 
 MESH_POINTS = "./data/2d-3pits/mesh_points.npy"
 REF_PREFIX = "./data/2d-3pits/sol-"
-TARGET_TIMES = [0.00, 2.56, 5.23, 9.79]
+TARGET_TIMES = [0.00, 2.56, 7.00]
 
 NTK_BATCH_SIZE = 100
 BREAK_INTERVAL = 200
@@ -210,9 +210,9 @@ EPOCHS = 800000
 ALPHA = 1.0
 LR = 5e-4
 
-GEOTIME_SHAPE = [15, 20, 40]
+GEOTIME_SHAPE = [15, 20, 50]
 BCDATA_SHAPE = 200
-ICDATA_SHAPE = 500
+ICDATA_SHAPE = 300
 SAMPLING_STRATEGY = ["grid_transition", "lhs", "lhs"]
 
 RAR_BASE_SHAPE = 20000

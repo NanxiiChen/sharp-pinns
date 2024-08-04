@@ -103,7 +103,20 @@ class FourierFeatureEmbedding(nn.Module):
             return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
         elif self.method == "linear":
             return x
-        
+
+
+class MiltiscaleFourierEmbedding(nn.Module):
+    # output shape is 4 * out_features
+    def __init__(self, in_features, out_features, scale=1):
+        super().__init__()
+        self.high_embedding = FourierFeatureEmbedding(in_features, out_features, scale*5)
+        self.low_embedding = FourierFeatureEmbedding(in_features, out_features, scale)
+
+    def forward(self, x):
+        y_high = self.high_embedding(x)
+        y_low = self.low_embedding(x)
+        return torch.cat([y_high, y_low], dim=-1)
+
     
 class SpatialTemporalFourierEmbedding(nn.Module):
     # output shape is 4 * out_features
