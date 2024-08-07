@@ -90,12 +90,12 @@ class GeoTimeSampler:
         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
                    maxs=[self.geo_span[1][1], self.time_span[1]],
                    num=bc_num)
-        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
-                                     [0], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 左边
-        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
-                                      [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
+        # left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
+        #                              [0], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 左边
+        # right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
+        #                               [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
 
-        xyts = torch.cat([xyts_left, xyts_right, xyts_top, left, right], dim=0)
+        xyts = torch.cat([xyts_left, xyts_right, xyts_top,], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -177,7 +177,7 @@ num_seg = config.getint("TRAIN", "NUM_SEG")
 causal_configs = {
     "eps": 1e-12,
     "min_thresh": 0.99,
-    "step": 5,
+    "step": 10,
     "mean_thresh": 0.5
 }
 
@@ -237,7 +237,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
     net.train()
     # need_causal = not (causal_configs["eps"] > 1e-10 and epoch > 12000)
-    need_causal = False
+    need_causal = True
     # need_causal = epoch < 15000
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,

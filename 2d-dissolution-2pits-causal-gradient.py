@@ -47,15 +47,15 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         
         
-        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-        geotime = func(mins=mins, maxs=maxs, num=in_num)
-        geotime[:, -1] = geotime[:, -1]**2
+#         mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+#         maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+#         geotime = func(mins=mins, maxs=maxs, num=in_num)
+#         geotime[:, -1] = geotime[:, -1]**2
         
-        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-        #                maxs=[self.geo_span[0][1], self.geo_span[1]
-        #                      [1], self.time_span[1]],
-        #                num=in_num)
+        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+                       maxs=[self.geo_span[0][1], self.geo_span[1]
+                             [1], self.time_span[1]],
+                       num=in_num)
 
         return geotime.float().requires_grad_(True)
 
@@ -184,7 +184,7 @@ num_seg = config.getint("TRAIN", "NUM_SEG")
 causal_configs = {
     "eps": 1e-12,
     "min_thresh": 0.99,
-    "step": 5,
+    "step": 10,
     "mean_thresh": 0.4
 }
 
@@ -222,7 +222,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
