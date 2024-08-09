@@ -269,7 +269,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=256,
+        embedding_features=128,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -283,7 +283,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ResNet(512, 512, 2, 16).to(self.device)
+        self.model = ResNet(256, 256, 2, 16).to(self.device)
         # self.model = KAN([64, 32, 32, 2]).to(self.device)
 
 

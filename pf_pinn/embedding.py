@@ -107,7 +107,7 @@ class FourierFeatureEmbedding(nn.Module):
 
 class MiltiscaleFourierEmbedding(nn.Module):
     # output shape is 4 * out_features
-    def __init__(self, in_features, out_features, scale=3):
+    def __init__(self, in_features, out_features, scale=2):
         super().__init__()
         self.high_embedding = FourierFeatureEmbedding(in_features, out_features, scale*5)
         self.low_embedding = FourierFeatureEmbedding(in_features, out_features, scale)
