@@ -230,7 +230,7 @@ class ResNet(torch.nn.Module):
         self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
         self.hidden_layers = torch.nn.ModuleList()
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.GELU()
         # self.alpha = torch.nn.Parameter(
         #     torch.tensor([10.0, 10.0], dtype=torch.float32),
         #     requires_grad=True)
@@ -239,10 +239,10 @@ class ResNet(torch.nn.Module):
         # x = self.feature_fusion(x)
         x = self.act(self.in_layer(x))
         for layer in self.hidden_layers:
-            # identity = x
-            # x = self.act(layer(x)) + identity
+            identity = x
+            x = self.act(layer(x)) + identity
             
-            x = self.act(layer(x))
+            # x = self.act(layer(x))
             
         # return torch.tanh(self.out_layer(x)) / 2 + 1/2
         return torch.sigmoid(self.out_layer(x))
