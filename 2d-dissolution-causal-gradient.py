@@ -219,7 +219,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
 for epoch in range(EPOCHS):
     net.train()
-    need_causal = False
+    need_causal = True
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)

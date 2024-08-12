@@ -11,36 +11,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# class FourierEmbedding(torch.nn.Module):
-#     def __init__(self, in_features, embedding_features, std=1, method="trig"):
-#         super().__init__()
-#         self.method = method
-#         self.linear = torch.nn.Linear(in_features, embedding_features)
-#         if self.method == "trig":
-#             self.linear.weight.data = \
-#                 torch.randn(embedding_features, in_features) * std * np.pi
-#             self.linear.bias.data.zero_()
-#             for param in self.linear.parameters():
-#                 param.requires_grad = False
-#         elif self.method == "linear":
-#             # torch.nn.init.xavier_normal_(self.linear.weight)
-#             self.linear.weight.data = \
-#                 torch.randn(embedding_features, in_features) * std
-#             for param in self.linear.parameters():
-#                 param.requires_grad = False
-#             pass
+class FourierEmbedding(torch.nn.Module):
+    def __init__(self, in_features, embedding_features, std=2, method="trig"):
+        super().__init__()
+        self.method = method
+        self.linear = torch.nn.Linear(in_features, embedding_features)
+        if self.method == "trig":
+            self.linear.weight.data = \
+                torch.randn(embedding_features, in_features) * std * np.pi
+            self.linear.bias.data = torch.randn(embedding_features) * std * np.pi
+            # self.linear.bias.data.zero_()
+            for param in self.linear.parameters():
+                param.requires_grad = False
+        elif self.method == "linear":
+            # torch.nn.init.xavier_normal_(self.linear.weight)
+            self.linear.weight.data = \
+                torch.randn(embedding_features, in_features) * std
+            for param in self.linear.parameters():
+                param.requires_grad = False
+            pass
 
 
-
-#     def forward(self, x):
-#         x = self.linear(x)
-#         method = self.method
-#         if method == "trig":
-#             return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
-#         elif method == "linear":
-#             return x
-#         else:
-#             raise ValueError("Ivalid method.")
+    def forward(self, x):
+        x = self.linear(x)
+        method = self.method
+        if method == "trig":
+            return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
+        elif method == "linear":
+            return x
+        else:
+            raise ValueError("Ivalid method.")
 
 
 # class SpatialTemporalFourierEmbedding(torch.nn.Module):

@@ -70,7 +70,7 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
 
         xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
-                                          maxs=[0.025, 0.025,
+                                          maxs=[0.025, 0,
                                                 self.time_span[1]],
                                           num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
@@ -175,7 +175,7 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-12,
+    "eps": 1e-15,
     "min_thresh": 0.99,
     "step": 10,
     "mean_thresh": 0.5
@@ -237,7 +237,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
     net.train()
     # need_causal = not (causal_configs["eps"] > 1e-10 and epoch > 12000)
-    need_causal = True
+    need_causal = False
     # need_causal = epoch < 15000
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
@@ -363,6 +363,7 @@ for epoch in range(EPOCHS):
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
 
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
+        
 
         fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
                                         mesh_points=MESH_POINTS,
