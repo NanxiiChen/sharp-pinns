@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from .efficient_kan import KAN
+from .efficient_kan import KAN
 from .embedding import *
 
 
@@ -169,10 +169,10 @@ class ModifiedMLP(torch.nn.Module):
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
         self.act = torch.nn.Tanh()
-        # self.alpha = torch.nn.Parameter(
-        #     torch.tensor([3.0, 3.0], dtype=torch.float32),
-        #     requires_grad=True)
-        # self.alpha = torch.nn.Parameter(torch.tensor(3.0), requires_grad=True)
+        self.alpha = torch.nn.Parameter(
+            torch.tensor([5.0]*out_dim, dtype=torch.float32),
+            requires_grad=True)
+
         
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -188,7 +188,7 @@ class ModifiedMLP(torch.nn.Module):
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
         return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.out_layer(x))
+        # return torch.sigmoid(self.alpha*self.out_layer(x))
         # return self.out_layer(x)
 
         
@@ -220,20 +220,20 @@ class MultiscaleAttentionNet(torch.nn.Module):
             attention_weights = attention_layer(x)
             x = attention_weights * x + identity
         
-        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        return torch.sigmoid(self.out_layer(x))
+        return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        # return torch.sigmoid(self.out_layer(x))
 
         
 class ResNet(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
         self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
-        self.hidden_layers = torch.nn.ModuleList()
+        self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)])
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
         self.act = torch.nn.Tanh()
-        # self.alpha = torch.nn.Parameter(
-        #     torch.tensor([10.0, 10.0], dtype=torch.float32),
-        #     requires_grad=True)
+        self.alpha = torch.nn.Parameter(
+            torch.tensor([3.0, 3.0], dtype=torch.float32),
+            requires_grad=False)
         
     def forward(self, x):
         # x = self.feature_fusion(x)
@@ -244,26 +244,31 @@ class ResNet(torch.nn.Module):
             
             # x = self.act(layer(x))
             
-        return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        return torch.tanh(self.alpha*self.out_layer(x)) / 2 + 1/2
         # return torch.sigmoid(self.out_layer(x))
         
 class MixedModel(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        # self.model_cs = ResNet(in_dim, hidden_dim, out_dim, layers)
-        # self.model_phi = ResNet(in_dim, hidden_dim, out_dim, layers)
-        self.model = ResNet(in_dim, hidden_dim, out_dim, layers)
-        
+        self.model_cs = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        self.model_phi = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+
     def forward(self, x):
-        # phi = self.model_phi(x)
-        # cs = self.model_cs(x)
-        # cl = cs + (CLE - CSE)
-        # c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
-        # c = cs + (CLE - CSE) * (1 + 2*phi**3 - 3*phi**2)
-        # return torch.cat([phi, c], dim=1)
-        sol = self.model(x)
-        c = sol[:, 1:2] + (CLE - CSE) * (1 + 2*sol[:, 0:1]**3 - 3*sol[:, 0:1]**2)
-        return torch.cat([sol[:, 0:1], c], dim=1)
+        phi = self.model_phi(x)
+        cs = self.model_cs(x)
+        cl = cs + (CLE - CSE)
+        c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
+        return torch.cat([phi, c], dim=1)
+
+# class MixedModel(torch.nn.Module):
+#     def __init__(self, in_dim, hidden_dim, out_dim, layers):
+#         super().__init__()
+#         self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        
+#     def forward(self, x):
+#         sol = self.model(x)
+#         c = sol[:, 1:2] + (CLE - CSE) * (1 + 2*sol[:, 0:1]**3 - 3*sol[:, 0:1]**2)
+#         return torch.cat([sol[:, 0:1], c], dim=1)
 
         
 class PFPINN(torch.nn.Module):
@@ -281,12 +286,12 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
-        self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
-        # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        # self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
+        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = MixedModel(128, 128, 2, 6).to(self.device)
-        # self.model = KAN([64, 32, 32, 2]).to(self.device)
+        self.model = ModifiedMLP(256, 200, 2, 6).to(self.device)
+        # self.model = KAN([128, 32, 32, 2]).to(self.device)
 
 
     def auto_grad(self, up, down):
@@ -313,7 +318,8 @@ class PFPINN(torch.nn.Module):
 #     def forward(self, x):
 #         # x: (x, y, t)
 #         x_embedded = self.embedding(x)
-#         x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], dtype=x.dtype, device=x.device))
+#         x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
+#                                         dtype=x.dtype, device=x.device))
         
 #         output_pos = self.model(x_embedded)
 #         output_neg = self.model(x_neg_embedded)
@@ -702,6 +708,9 @@ class PFPINN(torch.nn.Module):
             grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
             # grads[idx] = torch.sum(torch.abs(grad)).item()
 
+        # normalize the `grads` to make the sum of them to be 1
+        # grads = grads / np.sum(grads)
+        
         weights = np.sum(grads) / grads
         # sometimes the gradients are too small or too large
         # so the weights might be NaN or Inf
@@ -738,9 +747,5 @@ class PFPINN(torch.nn.Module):
 #     print(segments)
 
 
-# if __name__ == "__main__":
-#     model = PFPINN()
-#     x = torch.randn(10, 3)
-#     y = model(x)
-#     print(y)
-#     # print(model)
+if __name__ == "__main__":
+    print(2 * AA * MM * GEO_COEF**2 / TIME_COEF)

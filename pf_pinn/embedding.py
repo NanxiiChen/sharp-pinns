@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 
 class FourierEmbedding(torch.nn.Module):
-    def __init__(self, in_features, embedding_features, std=2, method="trig"):
+    def __init__(self, in_features, embedding_features, std=5, method="trig"):
         super().__init__()
         self.method = method
         self.linear = torch.nn.Linear(in_features, embedding_features)
@@ -94,14 +94,20 @@ class FourierFeatureEmbedding(nn.Module):
         if method == "trig":
             self.weights = nn.Parameter(torch.randn(in_features, out_features) * np.pi * scale, requires_grad=False)
         elif method == "linear":
-            self.weights = nn.Parameter(torch.randn(in_features, 2*out_features) * np.pi * scale, requires_grad=False)
+            # self.weights = nn.Parameter(torch.randn(in_features, 2*out_features) * np.pi * scale, requires_grad=False)
+            self.weights = nn.Parameter(torch.linspace(1/2, 1.0, 2*out_features).reshape(1, -1), 
+                                        requires_grad=False)
         self.method = method
     
     def forward(self, x):
-        x = torch.matmul(x, self.weights)
+        # x = torch.matmul(x, self.weights)
         if self.method == "trig":
+            x = torch.matmul(x, self.weights)
             return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
         elif self.method == "linear":
+            x = torch.matmul(x, torch.ones_like(self.weights))
+            # 0~self.scale, shape: x.shape[-1]
+            x = x ** self.weights
             return x
 
 
@@ -122,7 +128,7 @@ class SpatialTemporalFourierEmbedding(nn.Module):
     # output shape is 4 * out_features
     def __init__(self, in_features, out_features, scale=2):
         super().__init__()
-        self.spatial_embedding = FourierFeatureEmbedding(in_features-1, out_features, scale)
+        self.spatial_embedding = FourierFeatureEmbedding(in_features-1, out_features, scale=scale)
         self.temporal_embedding = FourierFeatureEmbedding(1, out_features, scale, method="linear")
         # self.temporal_embedding = nn.Sequential(
         #     nn.Linear(1, out_features),

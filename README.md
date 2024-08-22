@@ -195,28 +195,28 @@ DIM = 2
 DRIVEN = "dissolution"
 GEO_COEF = 1e4
 TIME_COEF = 1e-2
-TIME_SPAN = (0, 0.07)
+TIME_SPAN = (0, 0.10)
 GEO_SPAN = ((-0.5, 0.5), (0, 0.5))
 NETWORK_SIZE = [3] + [80]*4 + [2]
-NUM_SEG = 8
+NUM_SEG = 10
 
 MESH_POINTS = "./data/2d-3pits/mesh_points.npy"
 REF_PREFIX = "./data/2d-3pits/sol-"
-TARGET_TIMES = [0.00, 2.56, 7.00]
+TARGET_TIMES = [0.00, 0.98, 2.56, 5.82, 9.79]
 
 NTK_BATCH_SIZE = 100
-BREAK_INTERVAL = 200
+BREAK_INTERVAL = 20
 EPOCHS = 800000
 ALPHA = 1.0
-LR = 5e-4
+LR = 1e-4
 
-GEOTIME_SHAPE = [15, 20, 50]
+GEOTIME_SHAPE = [30, 15, 50]
 BCDATA_SHAPE = 200
-ICDATA_SHAPE = 300
+ICDATA_SHAPE = 200
 SAMPLING_STRATEGY = ["grid_transition", "lhs", "lhs"]
 
-RAR_BASE_SHAPE = 20000
-RAR_SHAPE = 4000
+RAR_BASE_SHAPE = 10000
+RAR_SHAPE = 2000
 
 RESUME = None
 ;RESUME = "/root/tf-logs/3pits-gradient-2024-07-28-00-03-55/model-11000.pt"
