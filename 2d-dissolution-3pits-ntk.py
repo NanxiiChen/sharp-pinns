@@ -148,10 +148,7 @@ TIME_COEF = config.getfloat("TRAIN", "TIME_COEF")
 GEO_COEF = config.getfloat("TRAIN", "GEO_COEF")
 
 
-ic_weight = 1
-bc_weight = 1
-ac_weight = 1
-ch_weight = 1
+weights = [1] * 4
 
 NTK_BATCH_SIZE = config.getint("TRAIN", "NTK_BATCH_SIZE")
 BREAK_INTERVAL = config.getint("TRAIN", "BREAK_INTERVAL")
@@ -172,7 +169,7 @@ num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
     "eps": 1e-6,
-    "min_thresh": 0.75,
+    "min_thresh": 0.9,
     "step": 10,
     "mean_thresh": 0.5
 }
@@ -232,112 +229,35 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
 for epoch in range(EPOCHS):
     net.train()
-    # need_causal = not (causal_configs["eps"] > 1e-10 and epoch > 12000)
-    need_causal = True
-    # need_causal = epoch < 15000
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
         data = geotime.requires_grad_(True)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
-        # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
-        
 
-        # shuffle
-        data = data[torch.randperm(len(data))]
-        if need_causal:
-            indices = split_temporal_coords_into_segments(data[:, -1],
-                                                          time_span,
-                                                          num_seg)
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
-
-        # if epoch % (10*BREAK_INTERVAL) == 0:
-        #     fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        #     # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #     #             bbox_inches='tight', dpi=300)
-        #     writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
 
-    if need_causal:
-        ac_seg_loss = torch.zeros(num_seg, device=net.device)
-        ch_seg_loss = torch.zeros(num_seg, device=net.device)
-
-        for seg_idx, data_idx in enumerate(indices):
-            ac_seg_residual = ac_residual[data_idx]
-            ch_seg_residual = ch_residual[data_idx]
-            ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
-            ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
-
-        ac_causal_weights = torch.zeros(num_seg, device=net.device)
-        ch_causal_weights = torch.zeros(num_seg, device=net.device)
-        for seg_idx in range(num_seg):
-            if seg_idx == 0:
-                ac_causal_weights[seg_idx] = 1
-                ch_causal_weights[seg_idx] = 1
-            else:
-                ac_causal_weights[seg_idx] = torch.exp(
-                    -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
-                ch_causal_weights[seg_idx] = torch.exp(
-                    -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
-
-        if ac_causal_weights[-1] > causal_configs["min_thresh"] \
-                and ch_causal_weights[-1] > causal_configs["min_thresh"] \
-                and causal_configs["eps"] < 1000:
-            causal_configs["eps"] *= causal_configs["step"]
-            print(f"epoch {epoch}: "
-                  f"increase eps to {causal_configs['eps']:.2e}")
-            writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
-        # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-        #         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
-        #     causal_configs["eps"] /= causal_configs["step"]
-        #     print(f"epoch {epoch}: "
-        #           f"decrease eps to {causal_configs['eps']:.2e}")
-        #     writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
-
-        ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
-        ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
-
-    else:
-        ac_loss = torch.mean(ac_residual**2)
-        ch_loss = torch.mean(ch_residual**2)
-
+    if epoch % BREAK_INTERVAL == 0:
+        weights = net.compute_ntk_weight([ac_residual, ch_residual,
+                                        bc_forward, ic_forward],
+                                        method=config.get("TRAIN", "NTK_MODE").strip('"'), 
+                                        batch_size=NTK_BATCH_SIZE)
+    
+    ac_loss = torch.mean(ac_residual**2)
+    ch_loss = torch.mean(ch_residual**2)
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     
-    # an excepetion: `ac_loss` and `ch_loss` might be NaN or Inf
-    # if this happens, we should raise an error
-    if torch.isnan(ac_loss) or torch.isnan(ch_loss):
-        raise ValueError("NaN loss")
-    if torch.isinf(ac_loss) or torch.isinf(ch_loss):
-        raise ValueError("Inf loss")
-
-    if epoch % BREAK_INTERVAL == 0:
-        if bc_loss > 1e-10:
-            ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
-                [ac_loss, ch_loss, bc_loss, ic_loss],)
-        else:
-            ac_weight, ch_weight, ic_weight = net.compute_gradient_weight(
-                [ac_loss, ch_loss, ic_loss],)
-
-        for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
-            if np.isnan(weight):
-                raise ValueError("NaN weight")
+    loss_terms = [ac_loss, ch_loss, bc_loss, ic_loss]
+    losses = sum([w * l for w, l in zip(weights, loss_terms)])
     
-    
-    losses = ac_weight * ac_loss + ch_weight * ch_loss + \
-        bc_weight * bc_loss + ic_weight * ic_loss
-        
+
     if epoch % BREAK_INTERVAL == 0:
         grads = net.gradient(losses)
         writer.add_scalar("grad/grads", grads.abs().mean(), epoch)
@@ -348,46 +268,18 @@ for epoch in range(EPOCHS):
     scheduler.step()
 
     if epoch % BREAK_INTERVAL == 0:
-
-        print(f"epoch {epoch}: ac_loss {ac_loss:.2e}, ch_loss {ch_loss:.2e}, "
-              f"bc_loss {bc_loss:.2e}, ic_loss {ic_loss:.2e}, "
-              f"ac_weight {ac_weight:.2e}, ch_weight {ch_weight:.2e}, "
-              f"bc_weight {bc_weight:.2e}, ic_weight {ic_weight:.2e}")
-
-        writer.add_scalar("loss/ac_loss", ac_loss, epoch)
-        writer.add_scalar("loss/ch_loss", ch_loss, epoch)
-        writer.add_scalar("loss/bc_loss", bc_loss, epoch)
-        writer.add_scalar("loss/ic_loss", ic_loss, epoch)
-        writer.add_scalar("loss/total", losses, epoch)
-        writer.add_scalar("weight/ac_weight", ac_weight, epoch)
-        writer.add_scalar("weight/ch_weight", ch_weight, epoch)
-        writer.add_scalar("weight/bc_weight", bc_weight, epoch)
-        writer.add_scalar("weight/ic_weight", ic_weight, epoch)
         
-        if epoch % (10*BREAK_INTERVAL) == 0:
-            if need_causal:
-                fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-                ax = axes[0]
-                ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
-                ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
-                ax.set_title(f"epoch: {epoch} "
-                             f"eps: {causal_configs['eps']:.2e}")
-                ax.set_ylabel("Causal Weights")
-                ax.legend(loc="upper right")
+        weights_var_names = ["ac_weight", "ch_weight", "bc_weight", "ic_weight"]
+        losses_var_names = ["ac_loss", "ch_loss", "bc_loss", "ic_loss"]
+        print(f"Epoch {epoch}:", end=" ")
+        print(", ".join([f"{name}: {loss.item()}" for name, loss in zip(losses_var_names, loss_terms)]))
+        print(", ".join([f"{name}: {weight.item()}" for name, weight in zip(weights_var_names, weights)]))
+        
+        for i, name in enumerate(weights_var_names):
+            writer.add_scalar(f"weight/{name}", weights[i], epoch)
+        for i, name in enumerate(losses_var_names):
+            writer.add_scalar(f"loss/{name}", loss_terms[i], epoch)
 
-                ax = axes[1]
-                ax.plot(ac_seg_loss.detach().cpu().numpy(), label="ac")
-                ax.set_title(f"epoch: {epoch} ")
-                ax.set_ylabel("AC segment loss")
-
-                ax = axes[2]
-                ax.plot(ch_seg_loss.detach().cpu().numpy(), label="ch")
-                ax.set_title(f"epoch: {epoch} ")
-                ax.set_ylabel("CH segment loss")
-
-                # close the figure
-                plt.close(fig)
-                writer.add_figure("fig/causal_weights", fig, epoch)
 
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')

@@ -16,7 +16,7 @@ config.read("config.ini")
 
 
 # now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-now = "3pits-gradient-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "3pits-causal-iw-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
 
@@ -91,7 +91,7 @@ class GeoTimeSampler:
                                       [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
 
         xyts = torch.cat([xyts_left, xyts_right, xyts_top,
-                          left, right], dim=0)
+                          left,right], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -171,8 +171,8 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-6,
-    "min_thresh": 0.75,
+    "eps": 1e-3,
+    "min_thresh": 0.9,
     "step": 10,
     "mean_thresh": 0.5
 }
@@ -220,7 +220,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -238,79 +238,101 @@ for epoch in range(EPOCHS):
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
-        geotime = geotime.to(net.device)
-        data = geotime.requires_grad_(True)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
-        # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
+        
+        geotime = geotime.to(net.device).detach().requires_grad_(True)
+        anchors = anchors.to(net.device).detach().requires_grad_(True)
         
 
-        # shuffle
-        data = data[torch.randperm(len(data))]
         if need_causal:
-            indices = split_temporal_coords_into_segments(data[:, -1],
+            indices_geotime = split_temporal_coords_into_segments(geotime[:, -1],
                                                           time_span,
                                                           num_seg)
+            indices_anchors = split_temporal_coords_into_segments(anchors[:, -1],
+                                                            time_span,
+                                                            num_seg)
+
+            
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # if epoch % (10*BREAK_INTERVAL) == 0:
-        #     fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        #     # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #     #             bbox_inches='tight', dpi=300)
-        #     writer.add_figure("sampling", fig, epoch)
+        if epoch % (10*BREAK_INTERVAL) == 0:
+            fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+            writer.add_figure("sampling", fig, epoch)
 
-    ac_residual, ch_residual = net.net_pde(data)
+    ac_residual_geotime, ch_residual_geotime = net.net_pde(geotime)
+    ac_residual_anchors, ch_residual_anchors = net.net_pde(anchors)
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
 
-    if need_causal:
-        ac_seg_loss = torch.zeros(num_seg, device=net.device)
-        ch_seg_loss = torch.zeros(num_seg, device=net.device)
 
-        for seg_idx, data_idx in enumerate(indices):
-            ac_seg_residual = ac_residual[data_idx]
-            ch_seg_residual = ch_residual[data_idx]
-            ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
-            ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
+    ac_seg_loss = torch.zeros(num_seg, device=net.device)
+    ch_seg_loss = torch.zeros(num_seg, device=net.device)
 
-        ac_causal_weights = torch.zeros(num_seg, device=net.device)
-        ch_causal_weights = torch.zeros(num_seg, device=net.device)
-        for seg_idx in range(num_seg):
-            if seg_idx == 0:
-                ac_causal_weights[seg_idx] = 1
-                ch_causal_weights[seg_idx] = 1
-            else:
-                ac_causal_weights[seg_idx] = torch.exp(
-                    -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
-                ch_causal_weights[seg_idx] = torch.exp(
-                    -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
+    # for seg_idx, data_idx in enumerate(indices):
+    #     ac_seg_residual = ac_residual[data_idx]
+    #     ch_seg_residual = ch_residual[data_idx]
+    #     ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
+    #     ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
+    
+    for seg_idx in range(num_seg):
+        seg_data_idx_geotime = indices_geotime[seg_idx]
+        seg_data_idx_anchors = indices_anchors[seg_idx]
+        ac_seg_residual_geotime = ac_residual_geotime[seg_data_idx_geotime]
+        ch_seg_residual_geotime = ch_residual_geotime[seg_data_idx_geotime]
+        ac_seg_residual_anchors = ac_residual_anchors[seg_data_idx_anchors]
+        ch_seg_residual_anchors = ch_residual_anchors[seg_data_idx_anchors]
+        
+        ac_seg_loss_geotime = torch.mean(ac_seg_residual_geotime**2)
+        ch_seg_loss_geotime = torch.mean(ch_seg_residual_geotime**2)
+        ac_seg_loss_anchors = torch.mean(ac_seg_residual_anchors**2)
+        ch_seg_loss_anchors = torch.mean(ch_seg_residual_anchors**2)
+        
+        # geotime 与 anchors 自适应损失
+        ac_seg_weight_geotime, ac_seg_weight_anchors = net.compute_gradient_weight(
+            [ac_seg_loss_geotime, ac_seg_loss_anchors])
+        ch_seg_weight_geotime, ch_seg_weight_anchors = net.compute_gradient_weight(
+            [ch_seg_loss_geotime, ch_seg_loss_anchors])
+        ac_seg_loss[seg_idx] = ac_seg_loss_geotime +  ac_seg_loss_anchors * ac_seg_weight_anchors / ac_seg_weight_geotime
+        ch_seg_loss[seg_idx] = ch_seg_loss_geotime +  ch_seg_loss_anchors * ch_seg_weight_anchors / ch_seg_weight_geotime
+        
+        # geotime 与 anchors 固定权重
+        # ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual_geotime**2) + torch.mean(ac_seg_residual_anchors**2) / 5. 
+        # ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual_geotime**2) + torch.mean(ch_seg_residual_anchors**2) / 5.
 
-        if ac_causal_weights[-1] > causal_configs["min_thresh"] \
-                and ch_causal_weights[-1] > causal_configs["min_thresh"] \
-                and causal_configs["eps"] < 1000:
-            causal_configs["eps"] *= causal_configs["step"]
-            print(f"epoch {epoch}: "
-                  f"increase eps to {causal_configs['eps']:.2e}")
-            writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
-        # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-        #         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
-        #     causal_configs["eps"] /= causal_configs["step"]
-        #     print(f"epoch {epoch}: "
-        #           f"decrease eps to {causal_configs['eps']:.2e}")
-        #     writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
+    ac_causal_weights = torch.zeros(num_seg, device=net.device)
+    ch_causal_weights = torch.zeros(num_seg, device=net.device)
+    for seg_idx in range(num_seg):
+        if seg_idx == 0:
+            ac_causal_weights[seg_idx] = 1
+            ch_causal_weights[seg_idx] = 1
+        else:
+            ac_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(ac_seg_loss[:seg_idx])).detach()
+            ch_causal_weights[seg_idx] = torch.exp(
+                -causal_configs["eps"] * torch.sum(ch_seg_loss[:seg_idx])).detach()
 
-        ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
-        ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
+    if ac_causal_weights[-1] > causal_configs["min_thresh"] \
+            and ch_causal_weights[-1] > causal_configs["min_thresh"] \
+            and causal_configs["eps"] < 1:
+        causal_configs["eps"] *= causal_configs["step"]
+        print(f"epoch {epoch}: "
+                f"increase eps to {causal_configs['eps']:.2e}")
+        writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
+    # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+    #         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+    #     causal_configs["eps"] /= causal_configs["step"]
+    #     print(f"epoch {epoch}: "
+    #           f"decrease eps to {causal_configs['eps']:.2e}")
+    #     writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
 
-    else:
-        ac_loss = torch.mean(ac_residual**2)
-        ch_loss = torch.mean(ch_residual**2)
+    ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
+    ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
+
 
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
@@ -321,6 +343,7 @@ for epoch in range(EPOCHS):
         raise ValueError("NaN loss")
     if torch.isinf(ac_loss) or torch.isinf(ch_loss):
         raise ValueError("Inf loss")
+
 
     if epoch % BREAK_INTERVAL == 0:
         if bc_loss > 1e-10:

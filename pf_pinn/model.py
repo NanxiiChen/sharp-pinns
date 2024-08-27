@@ -169,11 +169,10 @@ class ModifiedMLP(torch.nn.Module):
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
         self.act = torch.nn.Tanh()
-        self.alpha = torch.nn.Parameter(
-            torch.tensor([5.0]*out_dim, dtype=torch.float32),
-            requires_grad=True)
+        # self.alpha = torch.nn.Parameter(
+        #     torch.tensor([3.0]*out_dim, dtype=torch.float32),
+        #     requires_grad=False)
 
-        
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
         torch.nn.init.xavier_normal_(self.gate_layer_2.weight)
@@ -231,9 +230,9 @@ class ResNet(torch.nn.Module):
         self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)])
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
         self.act = torch.nn.Tanh()
-        self.alpha = torch.nn.Parameter(
-            torch.tensor([3.0, 3.0], dtype=torch.float32),
-            requires_grad=False)
+        # self.alpha = torch.nn.Parameter(
+        #     torch.tensor([3.0, 3.0], dtype=torch.float32),
+        #     requires_grad=False)
         
     def forward(self, x):
         # x = self.feature_fusion(x)
@@ -244,31 +243,31 @@ class ResNet(torch.nn.Module):
             
             # x = self.act(layer(x))
             
-        return torch.tanh(self.alpha*self.out_layer(x)) / 2 + 1/2
+        return torch.tanh(self.out_layer(x)) / 2 + 1/2
         # return torch.sigmoid(self.out_layer(x))
         
-class MixedModel(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super().__init__()
-        self.model_cs = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
-        self.model_phi = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
-
-    def forward(self, x):
-        phi = self.model_phi(x)
-        cs = self.model_cs(x)
-        cl = cs + (CLE - CSE)
-        c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
-        return torch.cat([phi, c], dim=1)
-
 # class MixedModel(torch.nn.Module):
 #     def __init__(self, in_dim, hidden_dim, out_dim, layers):
 #         super().__init__()
-#         self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
-        
+#         self.model_cs = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+#         self.model_phi = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+
 #     def forward(self, x):
-#         sol = self.model(x)
-#         c = sol[:, 1:2] + (CLE - CSE) * (1 + 2*sol[:, 0:1]**3 - 3*sol[:, 0:1]**2)
-#         return torch.cat([sol[:, 0:1], c], dim=1)
+#         phi = self.model_phi(x)
+#         cs = self.model_cs(x)
+#         cl = cs + (CLE - CSE)
+#         c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
+#         return torch.cat([phi, c], dim=1)
+
+class MixedModel(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        
+    def forward(self, x):
+        sol = self.model(x)
+        c = sol[:, 1:2] + (CLE - CSE) * (1 + 2*sol[:, 0:1]**3 - 3*sol[:, 0:1]**2)
+        return torch.cat([sol[:, 0:1], c], dim=1)
 
         
 class PFPINN(torch.nn.Module):
@@ -287,11 +286,11 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
-        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ModifiedMLP(256, 200, 2, 6).to(self.device)
-        # self.model = KAN([128, 32, 32, 2]).to(self.device)
+        self.model = ModifiedMLP(3, 256, 2, 4).to(self.device)
+        # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
     def auto_grad(self, up, down):
@@ -312,19 +311,19 @@ class PFPINN(torch.nn.Module):
 
     def forward(self, x):
         # x: (x, y, t)
-        x = self.embedding(x)
+        # x = self.embedding(x)
         return self.model(x)
     
-#     def forward(self, x):
-#         # x: (x, y, t)
-#         x_embedded = self.embedding(x)
-#         x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
-#                                         dtype=x.dtype, device=x.device))
+    # def forward(self, x):
+    #     # x: (x, y, t)
+    #     x_embedded = self.embedding(x)
+    #     x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
+    #                                     dtype=x.dtype, device=x.device))
         
-#         output_pos = self.model(x_embedded)
-#         output_neg = self.model(x_neg_embedded)
+    #     output_pos = self.model(x_embedded)
+    #     output_neg = self.model(x_neg_embedded)
         
-#         return (output_pos + output_neg) / 2
+    #     return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
