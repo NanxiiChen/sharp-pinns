@@ -75,7 +75,9 @@ class GeoTimeSampler:
                                           maxs=[0.025, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
-        xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
+        
+        
+        xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.05 ** 2]
         xyts_left = xyts.clone()
         xyts_left[:, 0:1] -= 0.15
         xyts_right = xyts.clone()
@@ -186,7 +188,7 @@ causal_configs = {
     "eps": 1e-8,
     "min_thresh": 0.9,
     "step": 10,
-    "mean_thresh": 0.5,
+    "mean_thresh": 0.2,
     "max_eps": 10
 }
 
@@ -283,8 +285,8 @@ for epoch in range(EPOCHS):
     #     ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual**2)
     #     ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual**2)
     
-    ac_seg_weight_log = {}
-    ch_seg_weight_log = {}
+    # ac_seg_weight_log = {}
+    # ch_seg_weight_log = {}
     for seg_idx in range(num_seg):
 
         seg_data_idx_geotime = indices_geotime[seg_idx]
@@ -306,25 +308,25 @@ for epoch in range(EPOCHS):
         ch_seg_loss_anchors = torch.mean(ch_seg_residual_anchors**2)
         
         # geotime 与 anchors 自适应损失
-        ac_seg_weight_geotime, ac_seg_weight_anchors = net.compute_gradient_weight(
-            [ac_seg_loss_geotime, ac_seg_loss_anchors])
-        ch_seg_weight_geotime, ch_seg_weight_anchors = net.compute_gradient_weight(
-            [ch_seg_loss_geotime, ch_seg_loss_anchors])
-        ac_seg_loss[seg_idx] = ac_seg_loss_geotime +  ac_seg_loss_anchors * ac_seg_weight_anchors / ac_seg_weight_geotime
-        ch_seg_loss[seg_idx] = ch_seg_loss_geotime +  ch_seg_loss_anchors * ch_seg_weight_anchors / ch_seg_weight_geotime
+        # ac_seg_weight_geotime, ac_seg_weight_anchors = net.compute_gradient_weight(
+        #     [ac_seg_loss_geotime, ac_seg_loss_anchors])
+        # ch_seg_weight_geotime, ch_seg_weight_anchors = net.compute_gradient_weight(
+        #     [ch_seg_loss_geotime, ch_seg_loss_anchors])
+        # ac_seg_loss[seg_idx] = ac_seg_loss_geotime +  ac_seg_loss_anchors * ac_seg_weight_anchors / ac_seg_weight_geotime
+        # ch_seg_loss[seg_idx] = ch_seg_loss_geotime +  ch_seg_loss_anchors * ch_seg_weight_anchors / ch_seg_weight_geotime
         
-        ac_seg_weight_log[f"seg_{seg_idx}"] = ac_seg_weight_geotime / ac_seg_weight_anchors
-        ch_seg_weight_log[f"seg_{seg_idx}"] = ch_seg_weight_geotime / ch_seg_weight_anchors
-
-        
-    
-    writer.add_scalars("seg_weight/ac_weight", ac_seg_weight_log, epoch)
-    writer.add_scalars("seg_weight/ch_weight", ch_seg_weight_log, epoch)
-
+        # ac_seg_weight_log[f"seg_{seg_idx}"] = ac_seg_weight_geotime / ac_seg_weight_anchors
+        # ch_seg_weight_log[f"seg_{seg_idx}"] = ch_seg_weight_geotime / ch_seg_weight_anchors
 
         # geotime 与 anchors 固定权重
-        # ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual_geotime**2) + torch.mean(ac_seg_residual_anchors**2) / 5. 
-        # ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual_geotime**2) + torch.mean(ch_seg_residual_anchors**2) / 5.
+        ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual_geotime**2) + torch.mean(ac_seg_residual_anchors**2) / 5.0
+        ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual_geotime**2) + torch.mean(ch_seg_residual_anchors**2) / 5.0
+
+    
+    # writer.add_scalars("seg_weight/ac_weight", ac_seg_weight_log, epoch)
+    # writer.add_scalars("seg_weight/ch_weight", ch_seg_weight_log, epoch)
+
+
 
     ac_causal_weights = torch.zeros(num_seg, device=net.device)
     ch_causal_weights = torch.zeros(num_seg, device=net.device)
@@ -345,12 +347,12 @@ for epoch in range(EPOCHS):
         print(f"epoch {epoch}: "
                 f"increase eps to {causal_configs['eps']:.2e}")
         writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
-    # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-    #         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
-    #     causal_configs["eps"] /= causal_configs["step"]
-    #     print(f"epoch {epoch}: "
-    #           f"decrease eps to {causal_configs['eps']:.2e}")
-    #     writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
+    if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+            or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+        causal_configs["eps"] /= causal_configs["step"]
+        print(f"epoch {epoch}: "
+              f"decrease eps to {causal_configs['eps']:.2e}")
+        writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
 
     ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
     ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)

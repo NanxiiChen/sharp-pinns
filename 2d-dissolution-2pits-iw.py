@@ -16,7 +16,7 @@ config.read("config.ini")
 
 
 # now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-now = "2pits-modifiedmlp-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "2pits-iw_enlarge_geotime-no_causal"
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
 
@@ -224,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -275,11 +275,11 @@ for epoch in range(EPOCHS):
         ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
             [ch_loss_geotime, ch_loss_anchors],)
     
-    ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
-    ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
+    # ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
+    # ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
     
-    # ac_loss = ac_loss_geotime + ac_loss_anchors / 10.
-    # ch_loss = ch_loss_geotime + ch_loss_anchors / 10.
+    ac_loss = ac_loss_geotime * ac_geotime_weight / ac_anchors_weight + ac_loss_anchors
+    ch_loss = ch_loss_geotime * ch_geotime_weight / ch_anchors_weight + ch_loss_anchors
     
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
