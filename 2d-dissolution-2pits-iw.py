@@ -196,7 +196,7 @@ def ic_func(xts):
                    + xts[:, 1:2]**2)
     # c = phi = (r2 > 0.05**2).float()
     with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
+        phi = 1 - (1 - torch.tanh(3*torch.sqrt(torch.tensor(OMEGA_PHI)) /
                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
@@ -224,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -275,8 +275,9 @@ for epoch in range(EPOCHS):
         ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
             [ch_loss_geotime, ch_loss_anchors],)
     
-    ac_loss = ac_geotime_weight * ac_loss_geotime + ac_anchors_weight * ac_loss_anchors
-    ch_loss = ch_geotime_weight * ch_loss_geotime + ch_anchors_weight * ch_loss_anchors
+    ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
+    ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
+    
     # ac_loss = ac_loss_geotime + ac_loss_anchors / 10.
     # ch_loss = ch_loss_geotime + ch_loss_anchors / 10.
     
@@ -303,8 +304,7 @@ for epoch in range(EPOCHS):
         for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
             if np.isnan(weight):
                 raise ValueError("NaN weight")
-    
-    
+        
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + ic_weight * ic_loss
         
@@ -334,10 +334,8 @@ for epoch in range(EPOCHS):
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
         writer.add_scalar("weight/ic_weight", ic_weight, epoch)
         
-        writer.add_scalar("interface_weight/ac_geotime_weight", ac_geotime_weight, epoch)
-        writer.add_scalar("interface_weight/ch_geotime_weight", ch_geotime_weight, epoch)
-        writer.add_scalar("interface_weight/ac_anchors_weight", ac_anchors_weight, epoch)
-        writer.add_scalar("interface_weight/ch_anchors_weight", ch_anchors_weight, epoch)
+        writer.add_scalar("interface_weight/ac_weight", ac_geotime_weight/ac_anchors_weight, epoch)
+        writer.add_scalar("interface_weight/ch_weight", ch_geotime_weight/ch_anchors_weight, epoch)
         writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
         
 

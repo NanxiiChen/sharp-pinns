@@ -187,7 +187,7 @@ class ModifiedMLP(torch.nn.Module):
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
         return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.alpha*self.out_layer(x))
+        # return torch.sigmoid(self.out_layer(x))
         # return self.out_layer(x)
 
         
@@ -286,10 +286,10 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
-        # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ModifiedMLP(3, 256, 2, 4).to(self.device)
+        self.model = ModifiedMLP(256, 256, 2, 4).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -309,21 +309,21 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-    def forward(self, x):
-        # x: (x, y, t)
-        # x = self.embedding(x)
-        return self.model(x)
-    
     # def forward(self, x):
     #     # x: (x, y, t)
-    #     x_embedded = self.embedding(x)
-    #     x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
-    #                                     dtype=x.dtype, device=x.device))
+    #     x = self.embedding(x)
+    #     return self.model(x)
+    
+    def forward(self, x):
+        # x: (x, y, t)
+        x_embedded = self.embedding(x)
+        x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
+                                        dtype=x.dtype, device=x.device))
         
-    #     output_pos = self.model(x_embedded)
-    #     output_neg = self.model(x_neg_embedded)
+        output_pos = self.model(x_embedded)
+        output_neg = self.model(x_neg_embedded)
         
-    #     return (output_pos + output_neg) / 2
+        return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
@@ -435,7 +435,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e6, ch]
+        return [ac/1e8, ch/1e2]
         # return [ac, ch]
 
     def gradient(self, loss):

@@ -95,8 +95,8 @@ class FourierFeatureEmbedding(nn.Module):
             self.weights = nn.Parameter(torch.randn(in_features, out_features) * np.pi * scale, requires_grad=False)
         elif method == "linear":
             # self.weights = nn.Parameter(torch.randn(in_features, 2*out_features) * np.pi * scale, requires_grad=False)
-            self.weights = nn.Parameter(torch.linspace(1/4, 4, 2*out_features).reshape(1, -1), 
-                                        requires_grad=False)
+            self.weights = nn.Parameter(torch.linspace(1/3, 3, 2*out_features).reshape(1, -1), 
+                                        requires_grad=True)
         self.method = method
     
     def forward(self, x):
@@ -107,7 +107,7 @@ class FourierFeatureEmbedding(nn.Module):
         elif self.method == "linear":
             x = torch.matmul(x, torch.ones_like(self.weights))
             # 0~self.scale, shape: x.shape[-1]
-            # x = x ** self.weights
+            x = x ** self.weights
             return x
 
 
@@ -128,16 +128,14 @@ class SpatialTemporalFourierEmbedding(nn.Module):
     # output shape is 4 * out_features
     def __init__(self, in_features, out_features, scale=2):
         super().__init__()
-        self.spatial_embedding = FourierFeatureEmbedding(in_features-1, out_features, scale=scale)
-        self.temporal_embedding = FourierFeatureEmbedding(1, out_features, scale, method="linear")
-        # self.temporal_embedding = nn.Sequential(
-        #     nn.Linear(1, out_features),
-        #     nn.Tanh()
-        # )
-        # self.temporal_embedding[0].weight.data = torch.randn(out_features, 1) * scale * np.pi
-
+        self.spatial_weight = nn.Parameter(torch.randn(in_features-1, out_features) * np.pi * scale, requires_grad=False)
+        self.temporal_weight = nn.Parameter(torch.linspace(1/3, 4/3, 2*out_features).reshape(1, -1), requires_grad=False)
+        
+        
     def forward(self, x):
-        y_spatial = self.spatial_embedding(x[:, :-1])
-        y_temporal = self.temporal_embedding(x[:, -1:])
-        return torch.cat([y_spatial, y_temporal], dim=-1)
+        y_spatial = x[:, :-1]
+        y_temporal = x[:, -1:]
+        y_spatial = torch.matmul(y_spatial, self.spatial_weight)
+        y_temporal = torch.matmul(y_temporal, torch.ones_like(self.temporal_weight)) ** self.temporal_weight
+        return torch.cat([torch.sin(y_spatial), torch.cos(y_spatial), y_temporal], dim=-1)
         
