@@ -9,6 +9,7 @@ import configparser
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from matplotlib import gridspec
 
 from .efficient_kan import KAN
 from .embedding import *
@@ -552,8 +553,9 @@ class PFPINN(torch.nn.Module):
             acc = 1 - np.sqrt(np.mean(diff**2))
 
         else:
-
-            fig, axes = plt.subplots(len(ts), 2, figsize=(15, 5*len(ts)))
+            # use gs to plot the prediction
+            fig = plt.figure(figsize=(18, 5*len(ts)))
+            gs = gridspec.GridSpec(len(ts), 3, figure=fig, width_ratios=[1, 1, 0.05])
             mesh_tensor = torch.from_numpy(mesh_points).float()
             diffs = []
             for idx, tic in enumerate(ts):
@@ -563,23 +565,31 @@ class PFPINN(torch.nn.Module):
                                     dim=1).to(self.device)
                 with torch.no_grad():
                     sol = self.net_u(geotime).detach().cpu().numpy()
-                axes[idx, 0].scatter(mesh_points[:, 0], mesh_points[:, 1], c=sol[:, 0],
+                    
+                ax = fig.add_subplot(gs[idx, 0])
+                ax.scatter(mesh_points[:, 0], mesh_points[:, 1], c=sol[:, 0],
                                      cmap="coolwarm", label="phi", vmin=0, vmax=1)
-                axes[idx, 0].set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
+                ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
                                  title="pred t = " + str(round(tic, 2)))
 
-                truth = np.load(ref_prefix + f"{tic:.2f}" + ".npy")
+                truth = np.load(ref_prefix + f"{tic:.3f}" + ".npy")
                 diff = np.abs(sol[:, 0] - truth[:, 0])
-                axes[idx, 1].scatter(mesh_points[:, 0], mesh_points[:, 1], c=diff,
-                                     cmap="coolwarm", label="error", vmin=0, vmax=1)
-                axes[idx, 1].set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
+                
+                ax = fig.add_subplot(gs[idx, 1])
+                error = ax.scatter(mesh_points[:, 0], mesh_points[:, 1], c=diff,
+                                     cmap="coolwarm", label="error")
+                ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
                                  title="error t = " + str(round(tic, 2)))
+                # add a colorbar to show the scale of the error
+                cbar_ax = fig.add_subplot(gs[idx, 2])
+                fig.colorbar(error, cax=cbar_ax)
+
                 diffs.append(diff)
             acc = np.mean(np.array(diffs)**2)
 
-        return fig, axes, acc
+        return fig, acc
 
     def plot_samplings(self, geotime, bcdata, icdata, anchors):
         # plot the sampling points
