@@ -15,8 +15,8 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 
 
-# now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-now = "2pits-iw_enlarge_geotime-no_causal"
+now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+# now = "2pits-iw_enlarge_geotime-no_causal"
 writer = SummaryWriter(log_dir="/root/tf-logs/" + now)
 save_root = "/root/tf-logs"
 
@@ -47,10 +47,10 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         
         
-#         mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-#         maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-#         geotime = func(mins=mins, maxs=maxs, num=in_num)
-#         geotime[:, -1] = geotime[:, -1]**2
+        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        # maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        # geotime = func(mins=mins, maxs=maxs, num=in_num)
+        # geotime[:, -1] = geotime[:, -1]**2
         
         geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
                        maxs=[self.geo_span[0][1], self.geo_span[1]
@@ -71,7 +71,7 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+0.1],
                                           maxs=[0.025, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
@@ -196,7 +196,7 @@ def ic_func(xts):
                    + xts[:, 1:2]**2)
     # c = phi = (r2 > 0.05**2).float()
     with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(3*torch.sqrt(torch.tensor(OMEGA_PHI)) /
+        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
@@ -269,17 +269,16 @@ for epoch in range(EPOCHS):
     ac_loss_geotime, ch_loss_geotime = pde_loss(geotime)
     ac_loss_anchors, ch_loss_anchors = pde_loss(anchors)
     
-    if epoch % BREAK_INTERVAL == 0:
-        ac_geotime_weight, ac_anchors_weight = net.compute_gradient_weight(
-            [ac_loss_geotime, ac_loss_anchors],)
-        ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
-            [ch_loss_geotime, ch_loss_anchors],)
+#     if epoch % BREAK_INTERVAL == 0:
+#         ac_geotime_weight, ac_anchors_weight = net.compute_gradient_weight(
+#             [ac_loss_geotime, ac_loss_anchors],)
+#         ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
+#             [ch_loss_geotime, ch_loss_anchors],)
     
-    # ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
-    # ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
-    
-    ac_loss = ac_loss_geotime * ac_geotime_weight / ac_anchors_weight + ac_loss_anchors
-    ch_loss = ch_loss_geotime * ch_geotime_weight / ch_anchors_weight + ch_loss_anchors
+    ac_loss = ac_loss_geotime + ac_loss_anchors
+    ch_loss = ch_loss_geotime + ch_loss_anchors
+    # ac_loss = ac_loss_geotime * ac_geotime_weight / ac_anchors_weight + ac_loss_anchors
+    # ch_loss = ch_loss_geotime * ch_geotime_weight / ch_anchors_weight + ch_loss_anchors
     
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
@@ -334,8 +333,8 @@ for epoch in range(EPOCHS):
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
         writer.add_scalar("weight/ic_weight", ic_weight, epoch)
         
-        writer.add_scalar("interface_weight/ac_weight", ac_geotime_weight/ac_anchors_weight, epoch)
-        writer.add_scalar("interface_weight/ch_weight", ch_geotime_weight/ch_anchors_weight, epoch)
+        # writer.add_scalar("interface_weight/ac_weight", ac_geotime_weight/ac_anchors_weight, epoch)
+        # writer.add_scalar("interface_weight/ch_weight", ch_geotime_weight/ch_anchors_weight, epoch)
         writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
         
 

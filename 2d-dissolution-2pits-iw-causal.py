@@ -47,15 +47,15 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         
         
-#         mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-#         maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-#         geotime = func(mins=mins, maxs=maxs, num=in_num)
-#         geotime[:, -1] = geotime[:, -1]**2
+        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        geotime = func(mins=mins, maxs=maxs, num=in_num)
+        geotime[:, -1] = geotime[:, -1]**2
         
-        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-                       maxs=[self.geo_span[0][1], self.geo_span[1]
-                             [1], self.time_span[1]],
-                       num=in_num)
+        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+        #                maxs=[self.geo_span[0][1], self.geo_span[1]
+        #                      [1], self.time_span[1]],
+        #                num=in_num)
 
         return geotime.float().requires_grad_(True)
 
@@ -71,7 +71,7 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+0.05],
                                           maxs=[0.025, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
@@ -198,7 +198,7 @@ def ic_func(xts):
                    + xts[:, 1:2]**2)
     # c = phi = (r2 > 0.05**2).float()
     with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(3*torch.sqrt(torch.tensor(OMEGA_PHI)) /
+        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
@@ -219,8 +219,8 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
     # Return the indexes of the temporal coordinates
     ts = ts.cpu()
     min_t, max_t = time_span
-    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
-    # bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device) ** 2
+    # bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device) ** 2
     indices = torch.bucketize(ts, bins)
     return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
 
@@ -412,7 +412,7 @@ for epoch in range(EPOCHS):
         
         if epoch % (10*BREAK_INTERVAL) == 0:
             if need_causal:
-                bins = torch.linspace(time_span[0], time_span[1], num_seg + 1, device=net.device)
+                bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
                 ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
                 ts = ts.detach().cpu().numpy()
                 
