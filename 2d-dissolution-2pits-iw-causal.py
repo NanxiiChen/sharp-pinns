@@ -71,7 +71,7 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+0.05],
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
                                           maxs=[0.025, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
@@ -188,7 +188,7 @@ causal_configs = {
     "eps": 1e-8,
     "min_thresh": 0.9,
     "step": 10,
-    "mean_thresh": 0.2,
+    "mean_thresh": 0.1,
     "max_eps": 10
 }
 
@@ -198,7 +198,7 @@ def ic_func(xts):
                    + xts[:, 1:2]**2)
     # c = phi = (r2 > 0.05**2).float()
     with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
+        phi = 1 - (1 - torch.tanh(5*torch.sqrt(torch.tensor(OMEGA_PHI)) /
                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
@@ -450,7 +450,7 @@ for epoch in range(EPOCHS):
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
         
         if epoch % (10*BREAK_INTERVAL) == 0:
-            fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
+            fig, acc = net.plot_predict(ts=TARGET_TIMES,
                                             mesh_points=MESH_POINTS,
                                             ref_prefix=REF_PREFIX)
 
