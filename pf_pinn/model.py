@@ -244,8 +244,8 @@ class ResNet(torch.nn.Module):
             
             # x = self.act(layer(x))
             
-        return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.out_layer(x))
+        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        return torch.sigmoid(self.out_layer(x))
         
 # class MixedModel(torch.nn.Module):
 #     def __init__(self, in_dim, hidden_dim, out_dim, layers):
@@ -287,10 +287,10 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
-        # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ModifiedMLP(3, 256, 2, 4).to(self.device)
+        self.model = ModifiedMLP(256, 256, 2, 6).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -312,7 +312,7 @@ class PFPINN(torch.nn.Module):
 
     def forward(self, x):
         # x: (x, y, t)
-        # x = self.embedding(x)
+        x = self.embedding(x)
         return self.model(x)
     
     # def forward(self, x):

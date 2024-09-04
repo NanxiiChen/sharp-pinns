@@ -69,7 +69,7 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.1],
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.2],
                                           maxs=[0.025, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
@@ -121,9 +121,9 @@ class GeoTimeSampler:
 
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_lhs_sampling_data(mins=[-0.1, 0],
-                                               maxs=[0.1, 0.1,],
-                                               num=ic_num)
+        xys_local = pfp.make_lhs_sampling_data(mins=[-0.2, 0],
+                                               maxs=[0.2, 0.2,],
+                                               num=ic_num*2)
         xys = torch.cat([xys, xys_local], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1),
                          self.time_span[0], device=xys.device)], dim=1)
@@ -176,7 +176,7 @@ num_seg = config.getint("TRAIN", "NUM_SEG")
 causal_configs = {
     "eps": 1e-9,
     "min_thresh": 0.99,
-    "step": 1.5,
+    "step": 10,
     "mean_thresh": 0.6
 }
 
@@ -185,7 +185,7 @@ def ic_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
         phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
+                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.15) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
     return torch.cat([phi, c], dim=1)
@@ -194,7 +194,7 @@ def ic_func(xts):
 def bc_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
-        phi = (r > 0.05).float()
+        phi = (r > 0.15).float()
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
@@ -213,7 +213,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -300,8 +300,8 @@ for epoch in range(EPOCHS):
         # ch_seg_loss[seg_idx] = ch_seg_loss_geotime +  ch_seg_loss_anchors * ch_seg_weight_anchors / ch_seg_weight_geotime
         
         # geotime 与 anchors 固定权重
-        ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual_geotime**2) + torch.mean(ac_seg_residual_anchors**2) / 5.
-        ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual_geotime**2) + torch.mean(ch_seg_residual_anchors**2) / 5.
+        ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual_geotime**2) + torch.mean(ac_seg_residual_anchors**2)
+        ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual_geotime**2) + torch.mean(ch_seg_residual_anchors**2)
 
     ac_causal_weights = torch.zeros(num_seg, device=net.device)
     ch_causal_weights = torch.zeros(num_seg, device=net.device)

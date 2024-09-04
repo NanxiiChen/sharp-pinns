@@ -123,7 +123,7 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         xys_local = pfp.make_lhs_sampling_data(mins=[-0.1, 0],
                                                maxs=[0.1, 0.1,],
-                                               num=ic_num)
+                                               num=ic_num*3)
         xys = torch.cat([xys, xys_local], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1),
                          self.time_span[0], device=xys.device)], dim=1)
@@ -184,7 +184,7 @@ causal_configs = {
 def ic_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
-        phi = 1 - (1 - torch.tanh(5*torch.sqrt(torch.tensor(OMEGA_PHI)) /
+        phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
@@ -262,11 +262,11 @@ for epoch in range(EPOCHS):
         ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
             [ch_loss_geotime, ch_loss_anchors],)
     
-    # ac_loss = ac_loss_geotime + ac_loss_anchors
-    # ch_loss = ch_loss_geotime + ch_loss_anchors
+    ac_loss = ac_loss_geotime + ac_loss_anchors
+    ch_loss = ch_loss_geotime + ch_loss_anchors
     
-    ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
-    ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
+    # ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
+    # ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
     
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
@@ -291,9 +291,10 @@ for epoch in range(EPOCHS):
         for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
             if np.isnan(weight):
                 raise ValueError("NaN weight")
-        
+            
+    eps_ic = 10.0 if epoch < 1000 else 1.0
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
-        bc_weight * bc_loss + ic_weight * ic_loss
+        bc_weight * bc_loss + eps_ic*ic_weight * ic_loss
         
     if epoch % BREAK_INTERVAL == 0:
         grads = net.gradient(losses)
