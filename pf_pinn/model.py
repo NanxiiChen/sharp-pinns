@@ -287,10 +287,10 @@ class PFPINN(torch.nn.Module):
         self.embedding_features = embedding_features
         # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         # self.embedding = FourierFeatureEmbedding(DIM+1, embedding_features).to(self.device)
-        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
+        # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ModifiedMLP(256, 256, 2, 6).to(self.device)
+        self.model = ModifiedMLP(3, 256, 2, 6).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -312,7 +312,7 @@ class PFPINN(torch.nn.Module):
 
     def forward(self, x):
         # x: (x, y, t)
-        x = self.embedding(x)
+        # x = self.embedding(x)
         return self.model(x)
     
     # def forward(self, x):
@@ -436,7 +436,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e8, ch/1e2]
+        return [ac/1e6, ch]
         # return [ac, ch]
 
     def gradient(self, loss):
@@ -571,9 +571,9 @@ class PFPINN(torch.nn.Module):
                                      cmap="coolwarm", label="phi", vmin=0, vmax=1)
                 ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
-                                 title="pred t = " + str(round(tic, 2)))
+                                 title="pred t = " + str(round(tic, 3)))
 
-                truth = np.load(ref_prefix + f"{tic:.2f}" + ".npy")
+                truth = np.load(ref_prefix + f"{tic:.3f}" + ".npy")
                 diff = np.abs(sol[:, 0] - truth[:, 0])
                 
                 ax = fig.add_subplot(gs[idx, 1])
@@ -581,7 +581,7 @@ class PFPINN(torch.nn.Module):
                                      cmap="coolwarm", label="error")
                 ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
-                                 title="error t = " + str(round(tic, 2)))
+                                 title="error t = " + str(round(tic, 3)))
                 # add a colorbar to show the scale of the error
                 cbar_ax = fig.add_subplot(gs[idx, 2])
                 fig.colorbar(error, cax=cbar_ax)

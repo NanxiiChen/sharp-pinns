@@ -357,7 +357,7 @@ for epoch in range(EPOCHS):
             if np.isnan(weight):
                 raise ValueError("NaN weight")
     
-    
+    eps_ic = 10.0 if epoch < 1000 else 1.0
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + 10*ic_weight * ic_loss
         
