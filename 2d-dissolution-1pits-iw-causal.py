@@ -69,8 +69,8 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.2],
-                                          maxs=[0.025, 0.025,
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.05, 0, self.time_span[0]+self.time_span[1]*0.1],
+                                          maxs=[0.05, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
@@ -121,13 +121,14 @@ class GeoTimeSampler:
 
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_lhs_sampling_data(mins=[-0.2, 0],
-                                               maxs=[0.2, 0.2,],
+        xys_local = pfp.make_lhs_sampling_data(mins=[-0.1, 0],
+                                               maxs=[0.1, 0.1,],
                                                num=ic_num*2)
         xys = torch.cat([xys, xys_local], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1),
                          self.time_span[0], device=xys.device)], dim=1)
         return xyts.float().requires_grad_(True)
+
 
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
@@ -185,7 +186,7 @@ def ic_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
         phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.15) / GEO_COEF)) / 2
+                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
     return torch.cat([phi, c], dim=1)
@@ -194,7 +195,7 @@ def ic_func(xts):
 def bc_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
-        phi = (r > 0.15).float()
+        phi = (r > 0.05).float()
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
@@ -300,8 +301,8 @@ for epoch in range(EPOCHS):
         # ch_seg_loss[seg_idx] = ch_seg_loss_geotime +  ch_seg_loss_anchors * ch_seg_weight_anchors / ch_seg_weight_geotime
         
         # geotime 与 anchors 固定权重
-        ac_seg_loss[seg_idx] = torch.mean(ac_seg_residual_geotime**2) + torch.mean(ac_seg_residual_anchors**2)
-        ch_seg_loss[seg_idx] = torch.mean(ch_seg_residual_geotime**2) + torch.mean(ch_seg_residual_anchors**2)
+        ac_seg_loss[seg_idx] = ac_seg_loss_geotime + ac_seg_loss_anchors / 5
+        ch_seg_loss[seg_idx] = ch_seg_loss_geotime + ch_seg_loss_anchors / 5
 
     ac_causal_weights = torch.zeros(num_seg, device=net.device)
     ch_causal_weights = torch.zeros(num_seg, device=net.device)
@@ -333,9 +334,10 @@ for epoch in range(EPOCHS):
     ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
     ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
 
-
-    bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
-    ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
+    bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
+    ic_loss = criteria(ic_forward, ic_func(icdata).detach())
+    # bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
+    # ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     
     # an excepetion: `ac_loss` and `ch_loss` might be NaN or Inf
     # if this happens, we should raise an error
@@ -357,9 +359,9 @@ for epoch in range(EPOCHS):
             if np.isnan(weight):
                 raise ValueError("NaN weight")
     
-    eps_ic = 10.0 if epoch < 1000 else 1.0
+    eps_ic = 1.0
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
-        bc_weight * bc_loss + 10*ic_weight * ic_loss
+        bc_weight * bc_loss + eps_ic*ic_weight * ic_loss
         
     if epoch % BREAK_INTERVAL == 0:
         grads = net.gradient(losses)

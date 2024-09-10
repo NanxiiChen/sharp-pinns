@@ -47,15 +47,15 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         
         
-#         mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-#         maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-#         geotime = func(mins=mins, maxs=maxs, num=in_num)
-#         geotime[:, -1] = geotime[:, -1]**2
+        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        geotime = func(mins=mins, maxs=maxs, num=in_num)
+        geotime[:, -1] = geotime[:, -1]**2
         
-        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-                       maxs=[self.geo_span[0][1], self.geo_span[1]
-                             [1], self.time_span[1]],
-                       num=in_num)
+        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+        #                maxs=[self.geo_span[0][1], self.geo_span[1]
+        #                      [1], self.time_span[1]],
+        #                num=in_num)
 
         return geotime.float().requires_grad_(True)
 
@@ -71,15 +71,15 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.1],
                                           maxs=[0.025, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
         xyts_left = xyts.clone()
-        xyts_left[:, 0:1] -= 0.15
+        xyts_left[:, 0:1] -= 0.20
         xyts_right = xyts.clone()
-        xyts_right[:, 0:1] += 0.15
+        xyts_right[:, 0:1] += 0.20
 
         xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
                    maxs=[self.geo_span[0][1], self.time_span[1]],
@@ -124,14 +124,16 @@ class GeoTimeSampler:
                                                         num=ic_num)
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_semi_circle_data(radius=0.1,
-                                              num=ic_num*4,
-                                              center=[0, 0.])
-        xys_local_left = xys_local.clone()
-        xys_local_left[:, 0:1] -= 0.15
-        xys_local_right = xys_local.clone()
-        xys_local_right[:, 0:1] += 0.15
-        xys = torch.cat([xys, xys_local_left, xys_local_right], dim=0)  # 垂直堆叠
+        # xys_local = pfp.make_semi_circle_data(radius=0.1,
+        #                                       num=ic_num*4,
+        #                                       center=[0, 0.])
+        # xys_local_left = xys_local.clone()
+        # xys_local_left[:, 0:1] -= 0.15
+        # xys_local_right = xys_local.clone()
+        # xys_local_right[:, 0:1] += 0.15
+        xys_local = pfp.make_lhs_sampling_data(mins=[-0.45, 0], maxs=[0.45, 0.15], num=ic_num*6)
+        xys = torch.cat([xys, xys_local], dim=0)  # 垂直堆叠
+        
         xyts = torch.cat([xys,
                           torch.full((xys.shape[0], 1),
                                      self.time_span[0], device=xys.device)], dim=1)  # 水平堆叠
@@ -190,7 +192,7 @@ causal_configs = {
 
 
 def ic_func(xts):
-    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
+    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.20)**2
                    + xts[:, 1:2]**2)
     # c = phi = (r2 > 0.05**2).float()
     with torch.no_grad():
@@ -202,7 +204,7 @@ def ic_func(xts):
 
 
 def bc_func(xts):
-    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
+    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.20)**2
                    + xts[:, 1:2]**2).detach()
     with torch.no_grad():
         phi = (r > 0.05).float()
@@ -215,14 +217,14 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
     # Return the indexes of the temporal coordinates
     ts = ts.cpu()
     min_t, max_t = time_span
-    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device)**2
     indices = torch.bucketize(ts, bins)
     return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
 
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -235,20 +237,20 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
     net.train()
     # need_causal = not (causal_configs["eps"] > 1e-10 and epoch > 12000)
-    need_causal = True
+    need_causal = False
     # need_causal = epoch < 15000
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        data = geotime.requires_grad_(True)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
-        # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
+        net.train()
+        data = torch.cat([geotime, anchors],
+                         dim=0).detach().requires_grad_(True)
         
 
         # shuffle
@@ -261,11 +263,11 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # if epoch % (10*BREAK_INTERVAL) == 0:
-        #     fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        #     # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #     #             bbox_inches='tight', dpi=300)
-        #     writer.add_figure("sampling", fig, epoch)
+        if epoch % (10*BREAK_INTERVAL) == 0:
+            fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+            # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
+            #             bbox_inches='tight', dpi=300)
+            writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
@@ -368,25 +370,36 @@ for epoch in range(EPOCHS):
         
         if epoch % (BREAK_INTERVAL) == 0:
             if need_causal:
-                fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+                bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
+                ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
+                ts = ts.detach().cpu().numpy()
+                
+                fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+                axes = axes.flatten()
                 ax = axes[0]
-                ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
-                ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
-                ax.set_title(f"epoch: {epoch} "
-                             f"eps: {causal_configs['eps']:.2e}")
+                ax.plot(ts)
+                ax.set_title("time segments")
+                ax.set_ylabel("time (s)")
+                
+                ax = axes[1]
+                ax.plot(ts, ac_causal_weights.cpu().numpy(), label="ac")
+                ax.plot(ts, ch_causal_weights.cpu().numpy(), label="ch")
+                ax.set_title(f"eps: {causal_configs['eps']:.2e}")
                 ax.set_ylabel("Causal Weights")
                 ax.legend(loc="upper right")
 
-                ax = axes[1]
-                ax.plot(ac_seg_loss.detach().cpu().numpy(), label="ac")
-                ax.set_title(f"epoch: {epoch} ")
+                ax = axes[2]
+                ax.plot(ts, ac_seg_loss.detach().cpu().numpy(), label="ac")
+                ax.set_title("AC segment loss")
                 ax.set_ylabel("AC segment loss")
 
-                ax = axes[2]
-                ax.plot(ch_seg_loss.detach().cpu().numpy(), label="ch")
-                ax.set_title(f"epoch: {epoch} ")
+                ax = axes[3]
+                ax.plot(ts, ch_seg_loss.detach().cpu().numpy(), label="ch")
+                ax.set_title("CH segment loss")
                 ax.set_ylabel("CH segment loss")
 
+                # figure title 
+                fig.suptitle(f"epoch: {epoch} ")
                 # close the figure
                 plt.close(fig)
                 writer.add_figure("fig/causal_weights", fig, epoch)
@@ -394,8 +407,8 @@ for epoch in range(EPOCHS):
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
         
-        if epoch % (BREAK_INTERVAL) == 0:
-            fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
+        if epoch % BREAK_INTERVAL == 0:
+            fig, acc = net.plot_predict(ts=TARGET_TIMES,
                                             mesh_points=MESH_POINTS,
                                             ref_prefix=REF_PREFIX)
 

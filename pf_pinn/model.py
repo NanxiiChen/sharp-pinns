@@ -78,7 +78,7 @@ class PirateNet(torch.nn.Module):
             PirateBlock(hidden_dim, hidden_dim) for idx in range(num_blocks)
         ])
         
-        
+   
     def forward(self, x):
         phi = self.embedding(x)
         x = self.act(self.inp_layer(x))
@@ -169,10 +169,10 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.GELU()
         # self.alpha = torch.nn.Parameter(
-        #     torch.tensor([3.0]*out_dim, dtype=torch.float32),
-        #     requires_grad=False)
+        #     torch.tensor([5.0]*out_dim, dtype=torch.float32),
+        #     requires_grad=True)
 
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -187,8 +187,8 @@ class ModifiedMLP(torch.nn.Module):
         for idx, layer in enumerate(self.hidden_layers):
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
-        return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.out_layer(x))
+        # return (torch.tanh(self.out_layer(x)) / 2 + 1/2)*1.1 - 0.05 
+        return torch.sigmoid(self.out_layer(x))
         # return self.out_layer(x)
 
         
@@ -276,7 +276,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=64,
+        embedding_features=32,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -290,7 +290,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ModifiedMLP(3, 256, 2, 6).to(self.device)
+        self.model = ModifiedMLP(3, 64, 2, 4).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -314,6 +314,15 @@ class PFPINN(torch.nn.Module):
         # x: (x, y, t)
         # x = self.embedding(x)
         return self.model(x)
+    
+    # def forward(self, x):
+    #     # x: (x, y, t)
+
+        
+    #     output_pos = self.model(x)
+    #     output_neg = self.model(x * torch.tensor([-1, 1, 1], dtype=x.dtype, device=x.device))
+        
+    #     return (output_pos + output_neg) / 2
     
     # def forward(self, x):
     #     # x: (x, y, t)
@@ -436,7 +445,7 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e6, ch]
+        return [ac/1e8, ch/1e2]
         # return [ac, ch]
 
     def gradient(self, loss):

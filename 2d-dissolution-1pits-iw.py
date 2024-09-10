@@ -46,15 +46,15 @@ class GeoTimeSampler:
             func = pfp.make_uniform_grid_data_transition
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-        #                maxs=[self.geo_span[0][1], self.geo_span[1]
-        #                      [1], self.time_span[1]],
-        #                num=in_num)
+        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+                       maxs=[self.geo_span[0][1], self.geo_span[1]
+                             [1], self.time_span[1]],
+                       num=in_num)
 
-        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-        geotime = func(mins=mins, maxs=maxs, num=in_num)
-        geotime[:, -1] = geotime[:, -1]**2
+        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        # maxs = [self.geo_span[0][1], self.geo_span[1][1], self.time_span[1]**(1/2)]
+        # geotime = func(mins=mins, maxs=maxs, num=in_num)
+        # geotime[:, -1] = geotime[:, -1]**2
         return geotime.float().requires_grad_(True)
 
     # TODO: bc
@@ -69,8 +69,8 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.2],
-                                          maxs=[0.025, 0.025,
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.05, 0, self.time_span[0]+self.time_span[1]*0.1],
+                                          maxs=[0.05, 0.025,
                                                 self.time_span[1]],
                                           num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
@@ -121,8 +121,8 @@ class GeoTimeSampler:
 
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        xys_local = pfp.make_lhs_sampling_data(mins=[-0.2, 0],
-                                               maxs=[0.2, 0.2,],
+        xys_local = pfp.make_lhs_sampling_data(mins=[-0.1, 0],
+                                               maxs=[0.1, 0.1,],
                                                num=ic_num*2)
         xys = torch.cat([xys, xys_local], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1),
@@ -173,19 +173,12 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
-causal_configs = {
-    "eps": 1e-9,
-    "min_thresh": 0.99,
-    "step": 10,
-    "mean_thresh": 0.6
-}
-
 
 def ic_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
         phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
-                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.15) / GEO_COEF)) / 2
+                                  torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
         h_phi = -2 * phi**3 + 3 * phi**2
         c = h_phi * CSE
     return torch.cat([phi, c], dim=1)
@@ -194,26 +187,13 @@ def ic_func(xts):
 def bc_func(xts):
     r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
     with torch.no_grad():
-        phi = (r > 0.15).float()
+        phi = (r > 0.05).float()
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
-
-def split_temporal_coords_into_segments(ts, time_span, num_seg):
-    # Split the temporal coordinates into segments
-    # Return the indexes of the temporal coordinates
-    ts = ts.cpu()
-    min_t, max_t = time_span
-    # bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
-    bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device) ** 2
-    indices = torch.bucketize(ts, bins)
-    return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
-
-
-
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -268,13 +248,13 @@ for epoch in range(EPOCHS):
     # ac_loss = ac_loss_geotime + ac_loss_anchors
     # ch_loss = ch_loss_geotime + ch_loss_anchors
     
-    ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
-    ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
+    ac_loss = ac_loss_geotime * ac_geotime_weight / ac_anchors_weight + ac_loss_anchors
+    ch_loss = ch_loss_geotime * ch_geotime_weight / ch_anchors_weight + ch_loss_anchors
     
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
-    ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
+    bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
+    ic_loss = criteria(ic_forward, ic_func(icdata).detach())
     
     # an excepetion: `ac_loss` and `ch_loss` might be NaN or Inf
     # if this happens, we should raise an error
@@ -335,7 +315,7 @@ for epoch in range(EPOCHS):
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
         
-        if epoch % (10*BREAK_INTERVAL) == 0:
+        if epoch % BREAK_INTERVAL == 0:
             fig, acc = net.plot_predict(ts=TARGET_TIMES,
                                             mesh_points=MESH_POINTS,
                                             ref_prefix=REF_PREFIX)

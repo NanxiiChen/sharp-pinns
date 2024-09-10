@@ -224,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -256,34 +256,28 @@ for epoch in range(EPOCHS):
             writer.add_figure("sampling", fig, epoch)
 
 
-    def pde_loss(geotime):
-        ac_residual, ch_residual = net.net_pde(geotime)
-        ac_loss = torch.mean(ac_residual**2)
-        ch_loss = torch.mean(ch_residual**2)
-        return ac_loss, ch_loss
     
-    # ac_residual, ch_residual = net.net_pde(geotime)
-    # ac_loss = torch.mean(ac_residual**2)
-    # ch_loss = torch.mean(ch_residual**2)
+    ac_residual_geotime, ch_residual_geotime = net.net_pde(geotime)
+    ac_residual_anchors, ch_residual_anchors = net.net_pde(anchors)
+    ac_loss_geotime = torch.mean(ac_residual_geotime**2)
+    ch_loss_geotime = torch.mean(ch_residual_geotime**2)
+    ac_loss_anchors = torch.mean(ac_residual_anchors**2)
+    ch_loss_anchors = torch.mean(ch_residual_anchors**2)
     
-    ac_loss_geotime, ch_loss_geotime = pde_loss(geotime)
-    ac_loss_anchors, ch_loss_anchors = pde_loss(anchors)
+    if epoch % BREAK_INTERVAL == 0:
+        ac_geotime_weight, ac_anchors_weight = net.compute_gradient_weight(
+            [ac_loss_geotime, ac_loss_anchors],)
+        ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
+            [ch_loss_geotime, ch_loss_anchors],)
     
-#     if epoch % BREAK_INTERVAL == 0:
-#         ac_geotime_weight, ac_anchors_weight = net.compute_gradient_weight(
-#             [ac_loss_geotime, ac_loss_anchors],)
-#         ch_geotime_weight, ch_anchors_weight = net.compute_gradient_weight(
-#             [ch_loss_geotime, ch_loss_anchors],)
     
-    ac_loss = ac_loss_geotime + ac_loss_anchors
-    ch_loss = ch_loss_geotime + ch_loss_anchors
-    # ac_loss = ac_loss_geotime * ac_geotime_weight / ac_anchors_weight + ac_loss_anchors
-    # ch_loss = ch_loss_geotime * ch_geotime_weight / ch_anchors_weight + ch_loss_anchors
+    ac_loss = ac_loss_geotime + ac_loss_anchors * ac_anchors_weight / ac_geotime_weight
+    ch_loss = ch_loss_geotime + ch_loss_anchors * ch_anchors_weight / ch_geotime_weight
     
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
-    ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
+    bc_loss = criteria(bc_forward, bc_func(bcdata).detach())
+    ic_loss = criteria(ic_forward, ic_func(icdata).detach())
     
     # an excepetion: `ac_loss` and `ch_loss` might be NaN or Inf
     # if this happens, we should raise an error
@@ -341,8 +335,8 @@ for epoch in range(EPOCHS):
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
         
-        if epoch % (10*BREAK_INTERVAL) == 0:
-            fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
+        if epoch % BREAK_INTERVAL == 0:
+            fig, acc = net.plot_predict(ts=TARGET_TIMES,
                                             mesh_points=MESH_POINTS,
                                             ref_prefix=REF_PREFIX)
 

@@ -95,7 +95,7 @@ class FourierFeatureEmbedding(nn.Module):
             self.weights = nn.Parameter(torch.randn(in_features, out_features) * np.pi * scale, requires_grad=False)
         elif method == "linear":
             # self.weights = nn.Parameter(torch.randn(in_features, 2*out_features) * np.pi * scale, requires_grad=False)
-            self.weights = nn.Parameter(torch.linspace(1/3, 3, 2*out_features).reshape(1, -1), 
+            self.weights = nn.Parameter(torch.linspace(1/2, 2, 2*out_features).reshape(1, -1), 
                                         requires_grad=True)
         self.method = method
     
