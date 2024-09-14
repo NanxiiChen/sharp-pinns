@@ -305,12 +305,12 @@ for epoch in range(EPOCHS):
             print(f"epoch {epoch}: "
                   f"increase eps to {causal_configs['eps']:.2e}")
             writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
-        # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-        #         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
-        #     causal_configs["eps"] /= causal_configs["step"]
-        #     print(f"epoch {epoch}: "
-        #           f"decrease eps to {causal_configs['eps']:.2e}")
-        #     writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
+        if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+                or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+            causal_configs["eps"] /= causal_configs["step"]
+            print(f"epoch {epoch}: "
+                  f"decrease eps to {causal_configs['eps']:.2e}")
+            writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
 
         ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
         ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
