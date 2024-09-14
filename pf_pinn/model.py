@@ -188,7 +188,7 @@ class ModifiedMLP(torch.nn.Module):
             x = self.act(layer(x))
             x = x * u + (1 - x) * v
         return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        return torch.sigmoid(self.out_layer(x))
+        # return torch.sigmoid(self.out_layer(x))
         # return self.out_layer(x)
 
         
@@ -290,7 +290,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = ModifiedMLP(128, 64, 2, 6).to(self.device)
+        self.model = ModifiedMLP(128, 64, 2, 4).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -580,9 +580,9 @@ class PFPINN(torch.nn.Module):
                                      cmap="coolwarm", label="phi", vmin=0, vmax=1)
                 ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
-                                 title="pred t = " + str(round(tic, 2)))
+                                 title="pred t = " + str(round(tic, 3)))
 
-                truth = np.load(ref_prefix + f"{tic:.2f}" + ".npy")
+                truth = np.load(ref_prefix + f"{tic:.3f}" + ".npy")
                 diff = np.abs(sol[:, 0] - truth[:, 0])
                 
                 ax = fig.add_subplot(gs[idx, 1])
@@ -590,7 +590,7 @@ class PFPINN(torch.nn.Module):
                                      cmap="coolwarm", label="error")
                 ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
-                                 title="error t = " + str(round(tic, 2)))
+                                 title="error t = " + str(round(tic, 3)))
                 # add a colorbar to show the scale of the error
                 cbar_ax = fig.add_subplot(gs[idx, 2])
                 fig.colorbar(error, cax=cbar_ax)
