@@ -46,15 +46,15 @@ class GeoTimeSampler:
             func = pfp.make_uniform_grid_data_transition
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-        #                maxs=[self.geo_span[0][1], self.geo_span[1]
-        #                      [1], self.time_span[1]],
-        #                num=in_num)
+        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+                       maxs=[self.geo_span[0][1], self.geo_span[1]
+                             [1], self.time_span[1]],
+                       num=in_num)
 
-        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-        geotime = func(mins=mins, maxs=maxs, num=in_num)
-        geotime[:, -1] = geotime[:, -1]**2
+        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        # maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        # geotime = func(mins=mins, maxs=maxs, num=in_num)
+        # geotime[:, -1] = geotime[:, -1]**2
         return geotime.float().requires_grad_(True)
 
     # TODO: bc
@@ -226,7 +226,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
     net.train()
     # need_causal = not (causal_configs["eps"] > 1e-10 and epoch > 12000)
-    need_causal = True
+    need_causal = False
     # need_causal = epoch < 15000
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,

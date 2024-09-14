@@ -69,7 +69,7 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]],
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.1],
                                           maxs=[0.025, 0,
                                                 self.time_span[1]],
                                           num=bc_num)
@@ -170,12 +170,14 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
+
 causal_configs = {
-    "eps": 1e-6,
-    "min_thresh": 0.75,
+    "eps": 1e-1,
+    "min_thresh": 0.99,
     "step": 10,
-    "mean_thresh": 0.5
+    "mean_thresh": 0.2
 }
+
 
 
 def cal_r(pts):
@@ -213,7 +215,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
     # Return the indexes of the temporal coordinates
     ts = ts.cpu()
     min_t, max_t = time_span
-    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device)**2
     indices = torch.bucketize(ts, bins)
     return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
 
@@ -239,14 +241,14 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        data = geotime.requires_grad_(True)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
-        # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
+        net.train()
+        data = torch.cat([geotime, anchors],
+                         dim=0).detach().requires_grad_(True)
         
 
         # shuffle
@@ -259,11 +261,11 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
 
-        # if epoch % (10*BREAK_INTERVAL) == 0:
-        #     fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        #     # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #     #             bbox_inches='tight', dpi=300)
-        #     writer.add_figure("sampling", fig, epoch)
+        if epoch % (10*BREAK_INTERVAL) == 0:
+            fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
+            # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
+            #             bbox_inches='tight', dpi=300)
+            writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
     bc_forward = net.net_u(bcdata)
@@ -293,17 +295,17 @@ for epoch in range(EPOCHS):
 
         if ac_causal_weights[-1] > causal_configs["min_thresh"] \
                 and ch_causal_weights[-1] > causal_configs["min_thresh"] \
-                and causal_configs["eps"] < 1000:
+                and causal_configs["eps"] < 100:
             causal_configs["eps"] *= causal_configs["step"]
             print(f"epoch {epoch}: "
                   f"increase eps to {causal_configs['eps']:.2e}")
             writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
-        # if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
-        #         or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
-        #     causal_configs["eps"] /= causal_configs["step"]
-        #     print(f"epoch {epoch}: "
-        #           f"decrease eps to {causal_configs['eps']:.2e}")
-        #     writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
+        if torch.mean(ac_causal_weights) < causal_configs["mean_thresh"] \
+                or torch.mean(ch_causal_weights) < causal_configs["mean_thresh"]:
+            causal_configs["eps"] /= causal_configs["step"]
+            print(f"epoch {epoch}: "
+                  f"decrease eps to {causal_configs['eps']:.2e}")
+            writer.add_scalar("causal/eps", causal_configs["eps"], epoch)
 
         ac_loss = torch.sum(ac_seg_loss * ac_causal_weights)
         ch_loss = torch.sum(ch_seg_loss * ch_causal_weights)
@@ -341,14 +343,17 @@ for epoch in range(EPOCHS):
     if epoch % BREAK_INTERVAL == 0:
         grads = net.gradient(losses)
         writer.add_scalar("grad/grads", grads.abs().mean(), epoch)
+        
+        
 
     opt.zero_grad()
     losses.backward()
     opt.step()
     scheduler.step()
 
-    if epoch % BREAK_INTERVAL == 0:
 
+    if epoch % BREAK_INTERVAL == 0:
+        
         print(f"epoch {epoch}: ac_loss {ac_loss:.2e}, ch_loss {ch_loss:.2e}, "
               f"bc_loss {bc_loss:.2e}, ic_loss {ic_loss:.2e}, "
               f"ac_weight {ac_weight:.2e}, ch_weight {ch_weight:.2e}, "
@@ -364,27 +369,38 @@ for epoch in range(EPOCHS):
         writer.add_scalar("weight/bc_weight", bc_weight, epoch)
         writer.add_scalar("weight/ic_weight", ic_weight, epoch)
         
-        if epoch % (10*BREAK_INTERVAL) == 0:
+        if epoch % (BREAK_INTERVAL) == 0:
             if need_causal:
-                fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+                bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
+                ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
+                ts = ts.detach().cpu().numpy()
+                
+                fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+                axes = axes.flatten()
                 ax = axes[0]
-                ax.plot(ac_causal_weights.cpu().numpy(), label="ac")
-                ax.plot(ch_causal_weights.cpu().numpy(), label="ch")
-                ax.set_title(f"epoch: {epoch} "
-                             f"eps: {causal_configs['eps']:.2e}")
+                ax.plot(ts)
+                ax.set_title("time segments")
+                ax.set_ylabel("time (s)")
+                
+                ax = axes[1]
+                ax.plot(ts, ac_causal_weights.cpu().numpy(), label="ac")
+                ax.plot(ts, ch_causal_weights.cpu().numpy(), label="ch")
+                ax.set_title(f"eps: {causal_configs['eps']:.2e}")
                 ax.set_ylabel("Causal Weights")
                 ax.legend(loc="upper right")
 
-                ax = axes[1]
-                ax.plot(ac_seg_loss.detach().cpu().numpy(), label="ac")
-                ax.set_title(f"epoch: {epoch} ")
+                ax = axes[2]
+                ax.plot(ts, ac_seg_loss.detach().cpu().numpy(), label="ac")
+                ax.set_title("AC segment loss")
                 ax.set_ylabel("AC segment loss")
 
-                ax = axes[2]
-                ax.plot(ch_seg_loss.detach().cpu().numpy(), label="ch")
-                ax.set_title(f"epoch: {epoch} ")
+                ax = axes[3]
+                ax.plot(ts, ch_seg_loss.detach().cpu().numpy(), label="ch")
+                ax.set_title("CH segment loss")
                 ax.set_ylabel("CH segment loss")
 
+                # figure title 
+                fig.suptitle(f"epoch: {epoch} ")
                 # close the figure
                 plt.close(fig)
                 writer.add_figure("fig/causal_weights", fig, epoch)
@@ -392,8 +408,8 @@ for epoch in range(EPOCHS):
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
         
-        if epoch % (10*BREAK_INTERVAL) == 0:
-            fig, ax, acc = net.plot_predict(ts=TARGET_TIMES,
+        if epoch % BREAK_INTERVAL == 0:
+            fig, acc = net.plot_predict(ts=TARGET_TIMES,
                                             mesh_points=MESH_POINTS,
                                             ref_prefix=REF_PREFIX)
 
