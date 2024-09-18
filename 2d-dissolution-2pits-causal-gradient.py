@@ -47,15 +47,15 @@ class GeoTimeSampler:
             raise ValueError(f"Unknown strategy {strategy}")
         
         
-        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-        # maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-        # geotime = func(mins=mins, maxs=maxs, num=in_num)
-        # geotime[:, -1] = geotime[:, -1]**2
+        mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        geotime = func(mins=mins, maxs=maxs, num=in_num)
+        geotime[:, -1] = geotime[:, -1]**2
         
-        geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-                       maxs=[self.geo_span[0][1], self.geo_span[1]
-                             [1], self.time_span[1]],
-                       num=in_num)
+        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+        #                maxs=[self.geo_span[0][1], self.geo_span[1]
+        #                      [1], self.time_span[1]],
+        #                num=in_num)
 
         return geotime.float().requires_grad_(True)
 
@@ -83,27 +83,26 @@ class GeoTimeSampler:
         xyts_right = xyts.clone()
         xyts_right[:, 0:1] += 0.15
 
-        xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
-                   maxs=[self.geo_span[0][1], self.time_span[1]],
-                   num=bc_num//2)
-        top = torch.cat([xts[:, 0:1],
-                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device),
-                        xts[:, 1:2]], dim=1)  # 顶边
+#         xts = func(mins=[self.geo_span[0][0], self.time_span[0]],
+#                    maxs=[self.geo_span[0][1], self.time_span[1]],
+#                    num=bc_num//2)
+#         top = torch.cat([xts[:, 0:1],
+#                         torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device),
+#                         xts[:, 1:2]], dim=1)  # 顶边
 
-        yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
-                   maxs=[self.geo_span[1][1], self.time_span[1]],
-                   num=bc_num//2)
+#         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
+#                    maxs=[self.geo_span[1][1], self.time_span[1]],
+#                    num=bc_num//2)
 
-        left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=yts.device),
-                          yts[:, 0:1],
-                          yts[:, 1:2]], dim=1)  # 左边
+#         left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=yts.device),
+#                           yts[:, 0:1],
+#                           yts[:, 1:2]], dim=1)  # 左边
 
-        right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=yts.device),
-                           yts[:, 0:1],
-                           yts[:, 1:2]], dim=1)  # 右边
+#         right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=yts.device),
+#                            yts[:, 0:1],
+#                            yts[:, 1:2]], dim=1)  # 右边
 
-        xyts = torch.cat([xyts_left, xyts_right,
-                         top,left,right], dim=0)
+        xyts = torch.cat([xyts_left, xyts_right,], dim=0)
 
         return xyts.float().requires_grad_(True)
 
@@ -186,10 +185,10 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-1,
+    "eps": 1e-5,
     "min_thresh": 0.99,
     "step": 10,
-    "mean_thresh": 0.2
+    "mean_thresh": 0.5
 }
 
 
@@ -226,7 +225,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=10000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.9)
 opt_method = "adam"
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
