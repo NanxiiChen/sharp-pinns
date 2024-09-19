@@ -118,7 +118,7 @@ class SpatialTemporalFourierEmbedding(nn.Module):
     def __init__(self, in_features, out_features, scale=2):
         super().__init__()
         self.spatial_weight = nn.Parameter(torch.randn(in_features-1, out_features) * np.pi * scale, requires_grad=True)
-        self.temporal_weight = nn.Parameter(torch.linspace(1, 6, 2*out_features).reshape(1, -1), requires_grad=True)
+        self.temporal_weight = nn.Parameter(torch.linspace(1/2, 4, 2*out_features).reshape(1, -1), requires_grad=True)
         
         
     def forward(self, x):

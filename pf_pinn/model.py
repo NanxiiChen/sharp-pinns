@@ -158,38 +158,7 @@ class MultiScaleFeatureFusion(torch.nn.Module):
             + (1 - attention_weights) * high_freq_features
 
     
-class ModifiedMLP(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super().__init__()
-        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim)
-        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim)
-        
-        self.hidden_layers = torch.nn.ModuleList([
-            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
-        ])
 
-        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.SiLU()
-        # self.alpha = torch.nn.Parameter(
-        #     torch.tensor([5.0]*out_dim, dtype=torch.float32),
-        #     requires_grad=False)
-
-        # use xavier initialization
-        torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
-        torch.nn.init.xavier_normal_(self.gate_layer_2.weight)
-        for layer in self.hidden_layers:
-            torch.nn.init.xavier_normal_(layer.weight)
-        torch.nn.init.xavier_normal_(self.out_layer.weight)
-
-    def forward(self, x):
-        u = self.act(self.gate_layer_1(x))
-        v = self.act(self.gate_layer_2(x))
-        for idx, layer in enumerate(self.hidden_layers):
-            x = self.act(layer(x))
-            x = x * u + (1 - x) * v
-        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.sigmoid(self.out_layer(x))
-        return self.out_layer(x)
 
         
 class MultiscaleAttentionNet(torch.nn.Module):
@@ -230,10 +199,8 @@ class ResNet(torch.nn.Module):
         self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
         self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)])
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
-        # self.alpha = torch.nn.Parameter(
-        #     torch.tensor([3.0]*out_dim, dtype=torch.float32),
-        #     requires_grad=True)
+        self.act = torch.nn.GELU()
+
         
     def forward(self, x):
         # x = self.feature_fusion(x)
@@ -241,38 +208,65 @@ class ResNet(torch.nn.Module):
         for layer in self.hidden_layers:
             identity = x
             x = self.act(layer(x)) + identity
-            
-            # x = self.act(layer(x))
-            
-        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
-        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
+
         return self.out_layer(x)
-        
-class MixedModel(torch.nn.Module):
+
+
+class ModifiedMLP(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        self.model_cl = ResNet(in_dim, hidden_dim, out_dim, layers)
-        self.model_phi = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim)
+        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim)
+        
+        self.hidden_layers = torch.nn.ModuleList([
+            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.GELU()
+
+
+        # use xavier initialization
+        torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
+        torch.nn.init.xavier_normal_(self.gate_layer_2.weight)
+        for layer in self.hidden_layers:
+            torch.nn.init.xavier_normal_(layer.weight)
+        torch.nn.init.xavier_normal_(self.out_layer.weight)
 
     def forward(self, x):
-        phi = torch.tanh(self.model_phi(x)) / 2 + 1/2
-        cl = torch.sigmoid(self.model_cl(x)) * (1 - CSE + CLE)
-        cs = cl + (CSE - CLE)
-        c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
-        return torch.cat([phi, c], dim=1)
+        u = self.act(self.gate_layer_1(x))
+        v = self.act(self.gate_layer_2(x))
+        for idx, layer in enumerate(self.hidden_layers):
+            x = self.act(layer(x))
+            x = x * u + (1 - x) * v
+        return self.out_layer(x)
+        # return torch.tanh(self.out_layer(x)) / 2 + 1/2
 
 # class MixedModel(torch.nn.Module):
 #     def __init__(self, in_dim, hidden_dim, out_dim, layers):
 #         super().__init__()
-#         self.model_cl = ResNet(in_dim, hidden_dim, out_dim, layers)
+#         self.model_cl = ResNet(in_dim//2, hidden_dim//2, out_dim, layers//2)
 #         self.model_phi = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
 
 #     def forward(self, x):
 #         phi = torch.tanh(self.model_phi(x)) / 2 + 1/2
-#         cl = torch.sigmoid(self.model_cl(x)) * (1 - CSE + CLE)
+#         cl = torch.sigmoid(self.model_cl(x[:, 0:64])) * (1 - CSE + CLE)
 #         cs = cl + (CSE - CLE)
 #         c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
 #         return torch.cat([phi, c], dim=1)
+
+class MixedModel(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+
+    def forward(self, x):
+        sol = self.model(x)
+        phi = torch.tanh(sol[:, 0:1]) / 2 + 1/2
+        cl = torch.sigmoid(sol[:, 1:2]) * (1 - CSE + CLE)
+        cs = cl + (CSE - CLE)
+        c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
+        return torch.cat([phi, c], dim=1)
 
 
         
@@ -295,7 +289,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = MixedModel(128, 64, 1, 4).to(self.device)
+        self.model = MixedModel(128, 128, 2, 6).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -323,7 +317,6 @@ class PFPINN(torch.nn.Module):
     # def forward(self, x):
     #     # x: (x, y, t)
 
-        
     #     output_pos = self.model(x)
     #     output_neg = self.model(x * torch.tensor([-1, 1, 1], dtype=x.dtype, device=x.device))
         
@@ -585,9 +578,9 @@ class PFPINN(torch.nn.Module):
                                      cmap="coolwarm", label="phi", vmin=0, vmax=1)
                 ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
-                                 title="pred t = " + str(round(tic, 3)))
+                                 title="pred t = " + str(round(tic, 2)))
 
-                truth = np.load(ref_prefix + f"{tic:.3f}" + ".npy")
+                truth = np.load(ref_prefix + f"{tic:.2f}" + ".npy")
                 diff = np.abs(sol[:, 0] - truth[:, 0])
                 
                 ax = fig.add_subplot(gs[idx, 1])
@@ -595,7 +588,7 @@ class PFPINN(torch.nn.Module):
                                      cmap="coolwarm", label="error")
                 ax.set(xlim=GEO_SPAN[0], ylim=GEO_SPAN[1], aspect="equal",
                                  xlabel="x" + geo_label_suffix, ylabel="y" + geo_label_suffix,
-                                 title="error t = " + str(round(tic, 3)))
+                                 title="error t = " + str(round(tic, 2)))
                 # add a colorbar to show the scale of the error
                 cbar_ax = fig.add_subplot(gs[idx, 2])
                 fig.colorbar(error, cax=cbar_ax)
