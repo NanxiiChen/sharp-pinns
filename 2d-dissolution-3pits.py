@@ -219,7 +219,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=3000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -293,7 +293,7 @@ for epoch in range(EPOCHS):
 
         if ac_causal_weights[-1] > causal_configs["min_thresh"] \
                 and ch_causal_weights[-1] > causal_configs["min_thresh"] \
-                and causal_configs["eps"] < 100:
+                and causal_configs["eps"] < 1000:
             causal_configs["eps"] *= causal_configs["step"]
             print(f"epoch {epoch}: "
                   f"increase eps to {causal_configs['eps']:.2e}")
@@ -315,25 +315,20 @@ for epoch in range(EPOCHS):
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     
-    # an excepetion: `ac_loss` and `ch_loss` might be NaN or Inf
-    # if this happens, we should raise an error
-    if torch.isnan(ac_loss) or torch.isnan(ch_loss):
-        raise ValueError("NaN loss")
-    if torch.isinf(ac_loss) or torch.isinf(ch_loss):
-        raise ValueError("Inf loss")
 
     if epoch % BREAK_INTERVAL == 0:
-        if bc_loss > 1e-10:
-            ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
+        ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
                 [ac_loss, ch_loss, bc_loss, ic_loss],)
-        else:
-            ac_weight, ch_weight, ic_weight = net.compute_gradient_weight(
-                [ac_loss, ch_loss, ic_loss],)
-
-        for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
-            if np.isnan(weight):
-                raise ValueError("NaN weight")
-    
+        # if bc_loss > 1e-8:
+        #     ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
+        #         [ac_loss, ch_loss, bc_loss, ic_loss],)
+        # else:
+        #     ac_weight, ch_weight, ic_weight = net.compute_gradient_weight(
+        #         [ac_loss, ch_loss, ic_loss],)
+        #     bc_weight = 0
+        # for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
+        #     if np.isnan(weight):
+        #         raise ValueError("NaN weight")
     
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + ic_weight * ic_loss

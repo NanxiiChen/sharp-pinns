@@ -115,16 +115,22 @@ class MiltiscaleFourierEmbedding(nn.Module):
     
 class SpatialTemporalFourierEmbedding(nn.Module):
     # output shape is 4 * out_features
-    def __init__(self, in_features, out_features, scale=2):
+    def __init__(self, in_features, out_features, scale=10):
         super().__init__()
-        self.spatial_weight = nn.Parameter(torch.randn(in_features-1, out_features) * np.pi * scale, requires_grad=True)
-        self.temporal_weight = nn.Parameter(torch.linspace(1/2, 4, 2*out_features).reshape(1, -1), requires_grad=True)
+        self.spatial_weight = nn.Parameter(torch.randn(in_features-1, out_features)\
+                                            * np.pi * scale, requires_grad=True)
+        self.temporal_weight = nn.Parameter(torch.linspace(1/2, 4, 2*out_features)\
+                                            .reshape(1, -1), requires_grad=True)
         
         
     def forward(self, x):
         y_spatial = x[:, :-1]
         y_temporal = x[:, -1:]
         y_spatial = torch.matmul(y_spatial, self.spatial_weight)
-        y_temporal = torch.matmul(y_temporal, torch.ones_like(self.temporal_weight)) ** self.temporal_weight
-        return torch.cat([torch.sin(y_spatial), torch.cos(y_spatial), y_temporal], dim=-1)
+        y_temporal = torch.matmul(y_temporal, \
+            torch.ones_like(self.temporal_weight)) \
+            ** self.temporal_weight
+        return torch.cat([torch.sin(y_spatial), \
+                            torch.cos(y_spatial), \
+                            y_temporal], dim=-1)
         

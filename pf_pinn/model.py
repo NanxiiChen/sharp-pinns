@@ -263,7 +263,10 @@ class MixedModel(torch.nn.Module):
     def forward(self, x):
         sol = self.model(x)
         phi = torch.tanh(sol[:, 0:1]) / 2 + 1/2
-        cl = torch.sigmoid(sol[:, 1:2]) * (1 - CSE + CLE)
+        cl = (1 - torch.tanh(sol[:, 1:2])) * (1 - CSE + CLE) / 2
+        # phi = torch.sigmoid(sol[:, 0:1]) * 1.1 - 0.05
+        # cl = torch.sigmoid(sol[:, 1:2]) * (1 - CSE + CLE) 
+        # cl =  (1 - torch.nn.SiLU()(sol[:, 1:2])) * (1 - CSE + CLE)
         cs = cl + (CSE - CLE)
         c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
         return torch.cat([phi, c], dim=1)
@@ -289,7 +292,7 @@ class PFPINN(torch.nn.Module):
         # self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = MixedModel(128, 128, 2, 6).to(self.device)
+        self.model = MixedModel(128, 128, 2, 8).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -443,9 +446,9 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
-        return [ac/1e6, ch]
+        return [ac/1e9, ch/1e3]
         # return [ac, ch]
-
+        
     def gradient(self, loss):
         # compute gradient of loss w.r.t. model parameters
         loss.backward(retain_graph=True)
@@ -727,12 +730,8 @@ class PFPINN(torch.nn.Module):
         # normalize the `grads` to make the sum of them to be 1
         # grads = grads / np.sum(grads)
         
-        weights = np.sum(grads) / grads
-        # sometimes the gradients are too small or too large
-        # so the weights might be NaN or Inf
-        # we need to clip them
-        weights = np.nan_to_num(weights)
-        weights = np.clip(weights, 1e-10, 1e20)
+        weights = np.sum(grads) / (grads + 1e-4) # !!!!!!!!
+        weights = np.clip(weights, 1e-6, 1e6)
         # weights /= 1e5
         # normalize the weights
         # weights = weights / np.sum(weights)
