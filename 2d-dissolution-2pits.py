@@ -185,10 +185,11 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-5,
+    "eps": 1e-2,
     "min_thresh": 0.99,
     "step": 10,
-    "mean_thresh": 0.5
+    "mean_thresh": 0.5,
+    "max_thresh": 1000
 }
 
 
@@ -225,7 +226,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.9)
 opt_method = "adam"
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
@@ -234,7 +235,6 @@ ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
-
 
 for epoch in range(EPOCHS):
     net.train()
@@ -245,16 +245,15 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        # # data = geotime.requires_grad_(True)
-        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-                                        method=method)
-        net.train()
-        data = torch.cat([geotime, anchors],
-                         dim=0).detach().requires_grad_(True)
-        # data = geotime.detach().requires_grad_(True)
-        
+        data = geotime.requires_grad_(True)
+        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+        #                                 method=method)
+        # net.train()
+        # data = torch.cat([geotime, anchors],
+        #                  dim=0).detach().requires_grad_(True)
+
 
         # shuffle
         data = data[torch.randperm(len(data))]
@@ -268,8 +267,6 @@ for epoch in range(EPOCHS):
 
         # if epoch % BREAK_INTERVAL == 0:
         #     fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        #     # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #     #             bbox_inches='tight', dpi=300)
         #     writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
@@ -300,7 +297,7 @@ for epoch in range(EPOCHS):
 
         if ac_causal_weights[-1] > causal_configs["min_thresh"] \
                 and ch_causal_weights[-1] > causal_configs["min_thresh"] \
-                and causal_configs["eps"] < 100:
+                and causal_configs["eps"] < causal_configs["max_thresh"]:
             causal_configs["eps"] *= causal_configs["step"]
             print(f"epoch {epoch}: "
                   f"increase eps to {causal_configs['eps']:.2e}")
@@ -322,25 +319,23 @@ for epoch in range(EPOCHS):
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     
-    # an excepetion: `ac_loss` and `ch_loss` might be NaN or Inf
-    # if this happens, we should raise an error
-    if torch.isnan(ac_loss) or torch.isnan(ch_loss):
-        raise ValueError("NaN loss")
-    if torch.isinf(ac_loss) or torch.isinf(ch_loss):
-        raise ValueError("Inf loss")
 
     if epoch % BREAK_INTERVAL == 0:
-        if bc_loss > 1e-10:
-            ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
+        ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
                 [ac_loss, ch_loss, bc_loss, ic_loss],)
-        else:
-            ac_weight, ch_weight, ic_weight = net.compute_gradient_weight(
-                [ac_loss, ch_loss, ic_loss],)
-
         for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
             if np.isnan(weight):
                 raise ValueError("NaN weight")
-    
+        # if bc_loss > 1e-8:
+        #     ac_weight, ch_weight, bc_weight, ic_weight = net.compute_gradient_weight(
+        #         [ac_loss, ch_loss, bc_loss, ic_loss],)
+        # else:
+        #     ac_weight, ch_weight, ic_weight = net.compute_gradient_weight(
+        #         [ac_loss, ch_loss, ic_loss],)
+        #     bc_weight = 0
+        # for weight in [ac_weight, ch_weight, bc_weight, ic_weight]:
+        #     if np.isnan(weight):
+        #         raise ValueError("NaN weight")
     
     losses = ac_weight * ac_loss + ch_weight * ch_loss + \
         bc_weight * bc_loss + ic_weight * ic_loss
@@ -377,6 +372,8 @@ for epoch in range(EPOCHS):
         if epoch % (BREAK_INTERVAL) == 0:
             if need_causal:
                 bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
+                # bins = torch.linspace(time_span[0], time_span[1], num_seg + 1, device=net.device)**2
+                
                 ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
                 ts = ts.detach().cpu().numpy()
                 

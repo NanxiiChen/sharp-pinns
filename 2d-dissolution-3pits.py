@@ -50,10 +50,10 @@ class GeoTimeSampler:
         geotime = func(mins=mins, maxs=maxs, num=in_num)
         geotime[:, -1] = geotime[:, -1]**2
         
-#         geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
-#                        maxs=[self.geo_span[0][1], self.geo_span[1]
-#                              [1], self.time_span[1]],
-#                        num=in_num)
+        # geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+        #                maxs=[self.geo_span[0][1], self.geo_span[1]
+        #                      [1], self.time_span[1]],
+        #                num=in_num)
 
         return geotime.float().requires_grad_(True)
 
@@ -173,7 +173,7 @@ causal_configs = {
     "min_thresh": 0.99,
     "step": 10,
     "mean_thresh": 0.5,
-    "max_thresh": 100
+    "max_thresh": 1000
 }
 
 
@@ -221,7 +221,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -240,14 +240,14 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        # data = geotime.requires_grad_(True)
-        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-                                        method=method)
-        net.train()
-        data = torch.cat([geotime, anchors],
-                         dim=0).detach().requires_grad_(True)
+        data = geotime.requires_grad_(True)
+        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+        #                                 method=method)
+        # net.train()
+        # data = torch.cat([geotime, anchors],
+        #                  dim=0).detach().requires_grad_(True)
 
 
         # shuffle
@@ -262,8 +262,6 @@ for epoch in range(EPOCHS):
 
         # if epoch % BREAK_INTERVAL == 0:
         #     fig, ax = net.plot_samplings(geotime, bcdata, icdata, anchors)
-        #     # plt.savefig(f"/root/tf-logs/{now}/sampling-{epoch}.png",
-        #     #             bbox_inches='tight', dpi=300)
         #     writer.add_figure("sampling", fig, epoch)
 
     ac_residual, ch_residual = net.net_pde(data)
@@ -369,6 +367,8 @@ for epoch in range(EPOCHS):
         if epoch % (BREAK_INTERVAL) == 0:
             if need_causal:
                 bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
+                # bins = torch.linspace(time_span[0], time_span[1], num_seg + 1, device=net.device)**2
+                
                 ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
                 ts = ts.detach().cpu().numpy()
                 

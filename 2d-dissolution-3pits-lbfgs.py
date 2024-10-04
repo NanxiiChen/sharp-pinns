@@ -219,8 +219,8 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 
 criteria = torch.nn.MSELoss()
-opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.9)
+opt = torch.optim.LBFGS(net.parameters(), lr=0.1, max_iter=30, history_size=100,)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=5000, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
