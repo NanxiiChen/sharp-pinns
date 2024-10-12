@@ -120,10 +120,9 @@ class SpatialTemporalFourierEmbedding(nn.Module):
         super().__init__()
         self.spatial_weight = nn.Parameter(torch.randn(in_features-1, out_features)\
                                             * np.pi * scale, requires_grad=True)
-        self.temporal_weight = nn.Parameter(torch.linspace(1/2, 4, 2*out_features)\
+        self.temporal_weight = nn.Parameter(torch.linspace(1, 5, 2*out_features)\
                                             .reshape(1, -1), requires_grad=True)
-#         self.temporal_layer = nn.Linear(1, 2*out_features)
-#         torch.nn.init.xavier_normal_(self.temporal_layer.weight)
+
         
         
     def forward(self, x):
@@ -133,7 +132,7 @@ class SpatialTemporalFourierEmbedding(nn.Module):
         y_temporal = torch.matmul(y_temporal, \
             torch.ones_like(self.temporal_weight)) \
             ** self.temporal_weight
-        # y_temporal = torch.tanh(self.temporal_layer(y_temporal))
+        # y_temporal = torch.matmul(y_temporal, self.temporal_weight)
         return torch.cat([torch.sin(y_spatial), \
                             torch.cos(y_spatial), \
                             y_temporal], dim=-1)
