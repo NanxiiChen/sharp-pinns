@@ -45,10 +45,10 @@ class GeoTimeSampler:
             func = pfp.make_uniform_grid_data_transition
         else:
             raise ValueError(f"Unknown strategy {strategy}")
-#         mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
-#         maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
-#         geotime = func(mins=mins, maxs=maxs, num=in_num)
-#         geotime[:, -1] = geotime[:, -1]**2
+        # mins = [self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]]
+        # maxs = [self.geo_span[0][1], self.geo_span[1][1], np.sqrt(self.time_span[1])]
+        # geotime = func(mins=mins, maxs=maxs, num=in_num)
+        # geotime[:, -1] = geotime[:, -1]**2
         
         geotime = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
                        maxs=[self.geo_span[0][1], self.geo_span[1]
@@ -81,14 +81,17 @@ class GeoTimeSampler:
         xyts_top[:, 1:2] += 0.475
 
 
-        # yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
-        #            maxs=[self.geo_span[1][1], self.time_span[1]],
-        #            num=bc_num)
-        # left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
-        #                              [0], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 左边
-        # right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
-        #                               [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
+#         yts = func(mins=[self.geo_span[1][0], self.time_span[0]],
+#                    maxs=[self.geo_span[1][1], self.time_span[1]],
+#                    num=bc_num)
+#         left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
+#                                      [0], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 左边
+#         right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0]
+#                                       [1], device="cuda"), yts[:, 0:1], yts[:, 1:2]], dim=1)  # 右边
 
+#         xyts = torch.cat([xyts_left, xyts_right, xyts_top,
+#                          left,right], dim=0)
+        
         xyts = torch.cat([xyts_left, xyts_right, xyts_top,], dim=0)
 
         return xyts.float().requires_grad_(True)
@@ -169,11 +172,11 @@ MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 num_seg = config.getint("TRAIN", "NUM_SEG")
 
 causal_configs = {
-    "eps": 1e-2,
+    "eps": 1e-5,
     "min_thresh": 0.99,
     "step": 10,
     "mean_thresh": 0.5,
-    "max_thresh": 1000
+    "max_thresh": 1e-3
 }
 
 
@@ -221,7 +224,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=2000, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=250, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -240,14 +243,14 @@ for epoch in range(EPOCHS):
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE, strateges=SAMPLING_STRATEGY)
         geotime = geotime.to(net.device)
-        data = geotime.requires_grad_(True)
-        # residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
-        # method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
-        # anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
-        #                                 method=method)
-        # net.train()
-        # data = torch.cat([geotime, anchors],
-        #                  dim=0).detach().requires_grad_(True)
+        # data = geotime.requires_grad_(True)
+        residual_base_data = sampler.in_sample(RAR_BASE_SHAPE, strategy="lhs")
+        method = config.get("TRAIN", "ADAPTIVE_SAMPLING").strip('"')
+        anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
+                                        method=method)
+        net.train()
+        data = torch.cat([geotime, anchors],
+                         dim=0).detach().requires_grad_(True)
 
 
         # shuffle
