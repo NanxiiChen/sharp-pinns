@@ -207,7 +207,7 @@ def bc_func(xts):
 
 
 criteria = torch.nn.MSELoss()
-opt = torch.optim.LBFGS(net.parameters(), lr=1, max_iter=30, history_size=100,)
+opt = torch.optim.LBFGS(net.parameters(), lr=0.1, max_iter=30, history_size=100,)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
