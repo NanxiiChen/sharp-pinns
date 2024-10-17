@@ -199,7 +199,7 @@ class ResNet(torch.nn.Module):
         self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
         self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)])
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.GELU()
+        self.act = torch.nn.Tanh()
 
         
     def forward(self, x):
@@ -215,8 +215,8 @@ class ResNet(torch.nn.Module):
 class ModifiedMLP(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim // 2)
-        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim * 2)
+        self.gate_layer_1 = torch.nn.Linear(in_dim, hidden_dim)
+        self.gate_layer_2 = torch.nn.Linear(in_dim, hidden_dim)
         
         self.hidden_layers = torch.nn.ModuleList([
             torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
@@ -236,10 +236,77 @@ class ModifiedMLP(torch.nn.Module):
         u = self.act(self.gate_layer_1(x))
         v = self.act(self.gate_layer_2(x))
         for idx, layer in enumerate(self.hidden_layers):
-            x = torch.tanh(layer(x)) / 2 + 1/2
+            x = torch.tanh(layer(x))
             x = x * u + (1 - x) * v
         return self.out_layer(x)
         # return torch.tanh(self.out_layer(x)) / 2 + 1/2
+        
+        
+# class UNetPINN(nn.Module):
+#     def __init__(self, in_dim, hidden_dim, out_dim, layers):
+#         super(UNetPINN, self).__init__()
+#         self.in_layer = nn.Linear(in_dim, hidden_dim)
+#         self.encoder = nn.ModuleList([
+#             nn.Linear(hidden_dim // 2**i, hidden_dim // 2**(i + 1)) for i in range(layers)
+#         ])
+#         self.decoder = nn.ModuleList([
+#             nn.Linear(hidden_dim // 2**(i + 1), hidden_dim // 2**i) for i in reversed(range(layers))
+#         ])
+#         self.out_layer = nn.Linear(hidden_dim, out_dim)
+#         self.activation = nn.Tanh()
+
+#     def forward(self, x):
+#         skip_connections = []
+#         x = self.activation(self.in_layer(x))
+        
+#         for layer in self.encoder:
+#             x = layer(x)
+#             if len(skip_connections) < len(self.encoder) - 1:
+#                 skip_connections.append(x)
+#             x = self.activation(x)
+
+#         for layer in self.decoder:
+#             if len(skip_connections) > 0:
+#                 skip = skip_connections.pop()
+#                 x = layer(x) + skip
+#             else:
+#                 x = layer(x)
+#             x = self.activation(x)
+
+#         return self.out_layer(x)
+            
+            
+class UNetPINN(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.encoder = torch.nn.ModuleList([
+            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+        self.decoder = torch.nn.ModuleList([
+            torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)
+        ])
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        skip_connections = []
+        
+        for idx, layer in enumerate(self.encoder):
+            x = layer(x)
+            if idx < len(self.encoder) - 1:
+                skip_connections.append(x)
+            x = self.act(x)
+            
+        for idx, layer in enumerate(self.decoder):
+            if idx < len(self.decoder) - 1:
+                x = layer(x) + skip_connections.pop()
+            else:
+                x = layer(x)
+            x = self.act(x)
+            
+        return self.out_layer(x)
+        
+
 
 # class MixedModel(torch.nn.Module):
 #     def __init__(self, in_dim, hidden_dim, out_dim, layers):
@@ -257,7 +324,7 @@ class ModifiedMLP(torch.nn.Module):
 class MixedModel(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        self.model = UNetPINN(in_dim, hidden_dim, out_dim, layers)
 
     def forward(self, x):
         sol = self.model(x)
@@ -276,7 +343,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=64,
+        embedding_features=32,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -289,7 +356,7 @@ class PFPINN(torch.nn.Module):
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = MixedModel(256, 128, 2, 6).to(self.device)
+        self.model = MixedModel(128, 128, 2, 6).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -309,18 +376,18 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-#     def forward(self, x):
-#         # x: (x, y, t)
-#         x = self.embedding(x)
-#         return self.model(x)
+    # def forward(self, x):
+    #     # x: (x, y, t)
+    #     x = self.embedding(x)
+    #     return self.model(x)
     
-#     def forward(self, x):
-#         # x: (x, y, t)
+    # def forward(self, x):
+    #     # x: (x, y, t)
 
-#         output_pos = self.model(x)
-#         output_neg = self.model(x * torch.tensor([-1, 1, 1], dtype=x.dtype, device=x.device))
+    #     output_pos = self.model(x)
+    #     output_neg = self.model(x * torch.tensor([-1, 1, 1], dtype=x.dtype, device=x.device))
         
-#         return (output_pos + output_neg) / 2
+    #     return (output_pos + output_neg) / 2
     
     def forward(self, x):
         # x: (x, y, t)
@@ -394,7 +461,7 @@ class PFPINN(torch.nn.Module):
 
     #     return [ac, ch]
 
-    def net_pde(self, geotime):
+    def net_pde(self, geotime, return_dt=False):
         # compute the pde residual
         # geo: x/y, t
         # sol: phi, c
@@ -443,6 +510,10 @@ class PFPINN(torch.nn.Module):
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
 
+        
+        if return_dt:
+            return [ac/1e6, ch, dphi_dt, dc_dt]
+        
         return [ac/1e6, ch]
         # return [ac, ch]
         
