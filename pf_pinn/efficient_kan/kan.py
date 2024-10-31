@@ -276,7 +276,8 @@ class KAN(torch.nn.Module):
             if update_grid:
                 layer.update_grid(x)
             x = layer(x)
-        return torch.tanh(x) / 2 + 1 /2
+        # return torch.tanh(x) / 2 + 1 /2
+        return x
 
     def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
         return sum(

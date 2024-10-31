@@ -135,6 +135,7 @@ net = pfp.PFPINN(
     # sizes=eval(config.get("TRAIN", "NETWORK_SIZE")),
     act=torch.nn.Tanh
 )
+torch.save(net,'save.pt')
 
 resume = config.get("TRAIN", "RESUME").strip('"')
 try:
@@ -176,7 +177,7 @@ causal_configs = {
     "min_thresh": 0.99,
     "step": 10,
     "mean_thresh": 0.5,
-    "max_thresh": 1e-3
+    "max_thresh": 1e-4
 }
 
 
@@ -216,15 +217,15 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
     # Return the indexes of the temporal coordinates
     ts = ts.cpu()
     min_t, max_t = time_span
-    # bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device)**2
-    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
+    bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device)**2
+    # bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
     indices = torch.bucketize(ts, bins)
     return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
 
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -232,6 +233,7 @@ ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
+
 
 
 for epoch in range(EPOCHS):
@@ -348,8 +350,8 @@ for epoch in range(EPOCHS):
         
         if epoch % (BREAK_INTERVAL//2) == 0:
               
-            # bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
-            bins = torch.linspace(time_span[0], time_span[1], num_seg + 1, device=net.device)
+            bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
+            # bins = torch.linspace(time_span[0], time_span[1], num_seg + 1, device=net.device)
             
             ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
             ts = ts.detach().cpu().numpy()

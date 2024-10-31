@@ -223,7 +223,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.GELU()
+        self.act = torch.nn.Tanh()
         
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -242,73 +242,73 @@ class ModifiedMLP(torch.nn.Module):
         # return torch.tanh(self.out_layer(x)) / 2 + 1/2
         
         
-# class UNetPINN(nn.Module):
-#     def __init__(self, in_dim, hidden_dim, out_dim, layers):
-#         super(UNetPINN, self).__init__()
-#         self.in_layer = nn.Linear(in_dim, hidden_dim)
-#         self.encoder = nn.ModuleList([
-#             nn.Linear(hidden_dim // 2**i, hidden_dim // 2**(i + 1)) for i in range(layers)
-#         ])
-#         self.decoder = nn.ModuleList([
-#             nn.Linear(hidden_dim // 2**(i + 1), hidden_dim // 2**i) for i in reversed(range(layers))
-#         ])
-#         self.out_layer = nn.Linear(hidden_dim, out_dim)
-#         self.activation = nn.Tanh()
-
-#     def forward(self, x):
-#         skip_connections = []
-#         x = self.activation(self.in_layer(x))
-        
-#         for layer in self.encoder:
-#             x = layer(x)
-#             if len(skip_connections) < len(self.encoder) - 1:
-#                 skip_connections.append(x)
-#             x = self.activation(x)
-
-#         for layer in self.decoder:
-#             if len(skip_connections) > 0:
-#                 skip = skip_connections.pop()
-#                 x = layer(x) + skip
-#             else:
-#                 x = layer(x)
-#             x = self.activation(x)
-
-#         return self.out_layer(x)
-            
-            
-class UNetPINN(torch.nn.Module):
+class UNetPINN(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super().__init__()
-        self.encoder = torch.nn.ModuleList([
-            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+        super(UNetPINN, self).__init__()
+        self.in_layer = nn.Linear(in_dim, hidden_dim)
+        self.encoder = nn.ModuleList([
+            nn.Linear(hidden_dim // 2**i, hidden_dim // 2**(i + 1)) for i in range(layers)
         ])
-        self.decoder = torch.nn.ModuleList([
-            torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)
+        self.decoder = nn.ModuleList([
+            nn.Linear(hidden_dim // 2**(i + 1), hidden_dim // 2**i) for i in reversed(range(layers))
         ])
-        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
-        
+        self.out_layer = nn.Linear(hidden_dim, out_dim)
+        self.activation = nn.Tanh()
+
     def forward(self, x):
         skip_connections = []
+        x = self.activation(self.in_layer(x))
         
-        for idx, layer in enumerate(self.encoder):
+        for layer in self.encoder:
             x = layer(x)
-            if idx < len(self.encoder) - 1:
+            if len(skip_connections) < len(self.encoder) - 1:
                 skip_connections.append(x)
-            x = self.act(x)
-            
-        for idx, layer in enumerate(self.decoder):
-            if idx < len(self.decoder) - 1:
-                x = layer(x) + skip_connections.pop()
+            x = self.activation(x)
+
+        for layer in self.decoder:
+            if len(skip_connections) > 0:
+                skip = skip_connections.pop()
+                x = layer(x) + skip
             else:
                 x = layer(x)
-            x = self.act(x)
-            
+            x = self.activation(x)
+
         return self.out_layer(x)
+            
+            
+# class UNetPINN(torch.nn.Module):
+#     def __init__(self, in_dim, hidden_dim, out_dim, layers):
+#         super().__init__()
+#         self.encoder = torch.nn.ModuleList([
+#             torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+#         ])
+#         self.decoder = torch.nn.ModuleList([
+#             torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)
+#         ])
+#         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+#         self.act = torch.nn.Tanh()
+        
+#     def forward(self, x):
+#         skip_connections = []
+        
+#         for idx, layer in enumerate(self.encoder):
+#             x = layer(x)
+#             if idx < len(self.encoder) - 1:
+#                 skip_connections.append(x)
+#             x = self.act(x)
+            
+#         for idx, layer in enumerate(self.decoder):
+#             if idx < len(self.decoder) - 1:
+#                 x = layer(x) + skip_connections.pop()
+#             else:
+#                 x = layer(x)
+#             x = self.act(x)
+            
+#         return self.out_layer(x)
         
 
 
-# class MixedModel(torch.nn.Module):
+# class PFEncodedPINN(torch.nn.Module):
 #     def __init__(self, in_dim, hidden_dim, out_dim, layers):
 #         super().__init__()
 #         self.model_cl = ResNet(in_dim//2, hidden_dim//2, out_dim, layers//2)
@@ -321,10 +321,12 @@ class UNetPINN(torch.nn.Module):
 #         c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
 #         return torch.cat([phi, c], dim=1)
 
-class MixedModel(torch.nn.Module):
+class PFEncodedPINN(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
-        self.model = UNetPINN(in_dim, hidden_dim, out_dim, layers)
+        self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        # self.model = KAN([128] + [64]*3 + [2])
+        
 
     def forward(self, x):
         sol = self.model(x)
@@ -343,7 +345,7 @@ class PFPINN(torch.nn.Module):
         self,
         # sizes: list,
         act=torch.nn.Tanh,
-        embedding_features=32,
+        embedding_features=64,
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -356,7 +358,7 @@ class PFPINN(torch.nn.Module):
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = MixedModel(128, 128, 2, 6).to(self.device)
+        self.model = PFEncodedPINN(256, 64, 2, 12).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
