@@ -121,9 +121,9 @@ class SpatialTemporalFourierEmbedding(nn.Module):
         self.spatial_weight = nn.Parameter(torch.randn(in_features-1, out_features)\
                                             * np.pi * scale, requires_grad=True)
         self.temporal_weight = nn.Parameter(torch.randn(1, out_features)\
-                                            * np.pi * scale / 8, requires_grad=True)
-        # self.temporal_weight = nn.Parameter(torch.linspace(1, 5, 2*out_features)\
-        #                                     .reshape(1, -1), requires_grad=True)
+                                            * np.pi * scale / 6, requires_grad=True)
+        # self.temporal_weight = nn.Parameter(torch.linspace(1/2, 4, 2*out_features)\
+        #                                     .reshape(1, -1), requires_grad=False)
 
         
     def forward(self, x):
@@ -135,11 +135,34 @@ class SpatialTemporalFourierEmbedding(nn.Module):
                             torch.cos(y_spatial), \
                             torch.sin(y_temporal), \
                             torch.cos(y_temporal)], dim=-1)
+        # y_temporal = torch.matmul(y_temporal, \
+        #     torch.ones_like(self.temporal_weight)) \
+        #     ** self.temporal_weight
+        # return torch.cat([torch.sin(y_spatial), \
+        #                     torch.cos(y_spatial), \
+        #                     y_temporal], dim=-1)
+        
+        
+# class SpatialTemporalFourierEmbedding(nn.Module):
+#     # output shape is 4 * out_features
+#     def __init__(self, in_features, out_features, scale):
+#         super().__init__()
+#         self.spatial_weight_high = nn.Parameter(torch.randn(in_features-1, out_features)\
+#                                             * np.pi * scale, requires_grad=True)
+#         self.spatial_weight_low = nn.Parameter(torch.randn(in_features-1, out_features)\
+#                                             * np.pi * scale / 5, requires_grad=True)
+#         self.temporal_weight = nn.Parameter(torch.linspace(1/2, 5, 2*out_features)\
+#                                             .reshape(1, -1), requires_grad=True)
+
+        
+#     def forward(self, x):
+#         y_spatial = x[:, :-1]
+#         y_temporal = x[:, -1:]
+#         y_spatial_high = torch.matmul(y_spatial, self.spatial_weight_high)
+#         y_spatial_low = torch.matmul(y_spatial, self.spatial_weight_low)
 #         y_temporal = torch.matmul(y_temporal, \
 #             torch.ones_like(self.temporal_weight)) \
 #             ** self.temporal_weight
-#         return torch.cat([torch.sin(y_spatial), \
-#                             torch.cos(y_spatial), \
+#         return torch.cat([torch.sin(y_spatial_high) * torch.sin(y_spatial_low), \
+#                             torch.cos(y_spatial_high) * torch.cos(y_spatial_low), \
 #                             y_temporal], dim=-1)
-        
-        
