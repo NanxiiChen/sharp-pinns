@@ -223,7 +223,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.GELU()
         
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -242,69 +242,69 @@ class ModifiedMLP(torch.nn.Module):
         # return torch.tanh(self.out_layer(x)) / 2 + 1/2
         
         
-class UNetPINN(nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
-        super(UNetPINN, self).__init__()
-        self.in_layer = nn.Linear(in_dim, hidden_dim)
-        self.encoder = nn.ModuleList([
-            nn.Linear(hidden_dim // 2**i, hidden_dim // 2**(i + 1)) for i in range(layers)
-        ])
-        self.decoder = nn.ModuleList([
-            nn.Linear(hidden_dim // 2**(i + 1), hidden_dim // 2**i) for i in reversed(range(layers))
-        ])
-        self.out_layer = nn.Linear(hidden_dim, out_dim)
-        self.activation = nn.Tanh()
-
-    def forward(self, x):
-        skip_connections = []
-        x = self.activation(self.in_layer(x))
-        
-        for layer in self.encoder:
-            x = layer(x)
-            if len(skip_connections) < len(self.encoder) - 1:
-                skip_connections.append(x)
-            x = self.activation(x)
-
-        for layer in self.decoder:
-            if len(skip_connections) > 0:
-                skip = skip_connections.pop()
-                x = layer(x) + skip
-            else:
-                x = layer(x)
-            x = self.activation(x)
-
-        return self.out_layer(x)
-            
-            
-# class UNetPINN(torch.nn.Module):
+# class UNetPINN(nn.Module):
 #     def __init__(self, in_dim, hidden_dim, out_dim, layers):
-#         super().__init__()
-#         self.encoder = torch.nn.ModuleList([
-#             torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+#         super(UNetPINN, self).__init__()
+#         self.in_layer = nn.Linear(in_dim, hidden_dim)
+#         self.encoder = nn.ModuleList([
+#             nn.Linear(hidden_dim // 2**i, hidden_dim // 2**(i + 1)) for i in range(layers)
 #         ])
-#         self.decoder = torch.nn.ModuleList([
-#             torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)
+#         self.decoder = nn.ModuleList([
+#             nn.Linear(hidden_dim // 2**(i + 1), hidden_dim // 2**i) for i in reversed(range(layers))
 #         ])
-#         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-#         self.act = torch.nn.Tanh()
-        
+#         self.out_layer = nn.Linear(hidden_dim, out_dim)
+#         self.activation = nn.Tanh()
+
 #     def forward(self, x):
 #         skip_connections = []
+#         x = self.activation(self.in_layer(x))
         
-#         for idx, layer in enumerate(self.encoder):
+#         for layer in self.encoder:
 #             x = layer(x)
-#             if idx < len(self.encoder) - 1:
+#             if len(skip_connections) < len(self.encoder) - 1:
 #                 skip_connections.append(x)
-#             x = self.act(x)
-            
-#         for idx, layer in enumerate(self.decoder):
-#             if idx < len(self.decoder) - 1:
-#                 x = layer(x) + skip_connections.pop()
+#             x = self.activation(x)
+
+#         for layer in self.decoder:
+#             if len(skip_connections) > 0:
+#                 skip = skip_connections.pop()
+#                 x = layer(x) + skip
 #             else:
 #                 x = layer(x)
-#             x = self.act(x)
-            
+#             x = self.activation(x)
+
 #         return self.out_layer(x)
+            
+            
+class UNetPINN(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.encoder = torch.nn.ModuleList([
+            torch.nn.Linear(in_dim if idx == 0 else hidden_dim, hidden_dim) for idx in range(layers)
+        ])
+        self.decoder = torch.nn.ModuleList([
+            torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)
+        ])
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.Tanh()
+        
+    def forward(self, x):
+        skip_connections = []
+        
+        for idx, layer in enumerate(self.encoder):
+            x = layer(x)
+            if idx < len(self.encoder) - 1:
+                skip_connections.append(x)
+            x = self.act(x)
+            
+        for idx, layer in enumerate(self.decoder):
+            if idx < len(self.decoder) - 1:
+                x = layer(x) + skip_connections.pop()
+            else:
+                x = layer(x)
+            x = self.act(x)
+            
+        return self.out_layer(x)
         
 
 
@@ -358,7 +358,7 @@ class PFPINN(torch.nn.Module):
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
         # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
         # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = PFEncodedPINN(256, 126, 2, 10).to(self.device)
+        self.model = PFEncodedPINN(256, 200, 2, 6).to(self.device)
         # self.model = KAN([256, 32, 32, 2]).to(self.device)
 
 
@@ -789,27 +789,25 @@ class PFPINN(torch.nn.Module):
         return traces.sum() / traces
 
     def compute_gradient_weight(self, losses):
-
+        
         grads = np.zeros(len(losses))
         for idx, loss in enumerate(losses):
             self.zero_grad()
             grad = self.gradient(loss)
             grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
-            # grads[idx] = torch.sum(torch.abs(grad)).item()
 
-        # normalize the `grads` to make the sum of them to be 1
-        # grads = grads / np.sum(grads)
-        
-        weights = np.mean(grads) / grads # ??sum or mean??
+            # grads[idx] = torch.sum(torch.abs(grad)).item()
+            
+        # idx_not_small = grads > 1e-8
+        # grads_not_small = grads[idx_not_small]
+        # weights = np.ones_like(grads)
+        # weights[idx_not_small] = np.mean(grads_not_small) / grads_not_small
+        # weights = np.clip(weights, 1e-8, 1e8)
+        # return weights
+
+        grads = np.clip(grads, 1e-6, 1e6)
+        weights = np.mean(grads) / grads
         weights = np.clip(weights, 1e-8, 1e8)
-        for weight in weights:
-            if np.isnan(weight):
-                raise ValueError("NaN weight")
-        # weights /= 1e5
-        # normalize the weights
-        # weights = weights / np.sum(weights)
-        # weights = weights / np.sqrt(np.sum(weights**2))
-        
         return weights
 
 
