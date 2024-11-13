@@ -223,7 +223,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.GELU()
+        self.act = torch.nn.Tanh()
         
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -354,12 +354,8 @@ class PFPINN(torch.nn.Module):
         # self.sizes = sizes
         self.act = act
         self.embedding_features = embedding_features
-        # self.model = torch.nn.Sequential(self.make_layers()).to(self.device)
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
-        # self.model = PirateNet(DIM+1, 64, 2, 2).to(self.device)
-        # self.model = ModifiedMLP(128, 128, 2, 6).to(self.device)
-        self.model = PFEncodedPINN(256, 200, 2, 6).to(self.device)
-        # self.model = KAN([256, 32, 32, 2]).to(self.device)
+        self.model = PFEncodedPINN(256, 128, 2, 4).to(self.device)
 
 
     def auto_grad(self, up, down):
@@ -378,10 +374,10 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-    # def forward(self, x):
-    #     # x: (x, y, t)
-    #     x = self.embedding(x)
-    #     return self.model(x)
+    def forward(self, x):
+        # x: (x, y, t)
+        x = self.embedding(x)
+        return self.model(x)
     
     # def forward(self, x):
     #     # x: (x, y, t)
@@ -391,16 +387,16 @@ class PFPINN(torch.nn.Module):
         
     #     return (output_pos + output_neg) / 2
     
-    def forward(self, x):
-        # x: (x, y, t)
-        x_embedded = self.embedding(x)
-        x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
-                                        dtype=x.dtype, device=x.device))
+#     def forward(self, x):
+#         # x: (x, y, t)
+#         x_embedded = self.embedding(x)
+#         x_neg_embedded = self.embedding(x * torch.tensor([-1, -1, 1, 1], 
+#                                         dtype=x.dtype, device=x.device))
         
-        output_pos = self.model(x_embedded)
-        output_neg = self.model(x_neg_embedded)
+#         output_pos = self.model(x_embedded)
+#         output_neg = self.model(x_neg_embedded)
         
-        return (output_pos + output_neg) / 2
+#         return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
@@ -537,10 +533,6 @@ class PFPINN(torch.nn.Module):
 
             idxs = torch.cat([ac_idx, ch_idx])
             idxs = torch.unique(torch.cat([ac_idx, ch_idx]))
-
-            # ac_anchors = base_data[ac_idx].to(self.device)
-            # ch_anchors = base_data[ch_idx].to(self.device)
-            # return [ac_anchors, ch_anchors]
         elif method == "gar":
             sol = self.net_u(base_data)
             dphi_dgeotime = self.auto_grad(sol[:, 0:1], base_data)
@@ -670,6 +662,89 @@ class PFPINN(torch.nn.Module):
             acc = np.mean(np.array(diffs)**2)
 
         return fig, acc
+    
+    
+    def plot_3d_geo_predict(self, ref_prefix, epoch, ts, mesh_points):
+        geo_label_suffix = f" [{1/GEO_COEF:.0e}m]"
+        time_label_suffix = f" [{1/TIME_COEF:.0e}s]"
+        # filter_
+        """
+        (MESH_POINTS[:, 0] >= geo_span[0][0]) &
+        (MESH_POINTS[:, 0] <= geo_span[0][1]) &
+        (MESH_POINTS[:, 1] >= geo_span[1][0]) &
+        (MESH_POINTS[:, 1] <= geo_span[1][1]) &
+        (MESH_POINTS[:, 2] >= geo_span[2][0]) &
+        (MESH_POINTS[:, 2] <= geo_span[2][1])
+        """
+        
+        filter_ = np.where(
+            (mesh_points[:, 0] >= GEO_SPAN[0][0]) &
+            (mesh_points[:, 0] <= GEO_SPAN[0][1]) &
+            (mesh_points[:, 1] >= GEO_SPAN[1][0]) &
+            (mesh_points[:, 1] <= GEO_SPAN[1][1]) &
+            (mesh_points[:, 2] >= GEO_SPAN[2][0]) &
+            (mesh_points[:, 2] <= GEO_SPAN[2][1])
+        )[0]
+        mesh_points = mesh_points[filter_]
+        
+        fig, axes = plt.subplots(2, len(ts), figsize=(5*len(ts), 10), 
+                                 subplot_kw={"projection": "3d",
+                                             "xlim": GEO_SPAN[0],
+                                             "ylim": GEO_SPAN[1],
+                                             "zlim": (GEO_SPAN[2][1], GEO_SPAN[2][0]),
+                                             "xlabel": "x" + geo_label_suffix,
+                                             "ylabel": "y" + geo_label_suffix,
+                                             "zlabel": "z" + geo_label_suffix,
+                                             "aspect": "auto",
+                                             "box_aspect": (1, 1, 0.5),})
+
+        mesh_tensor = torch.from_numpy(mesh_points).float()        
+        diffs = []
+        for idx, tic in enumerate(ts):
+            tic_tensor = torch.ones(mesh_tensor.shape[0], 1)\
+                .view(-1, 1) * tic * TIME_COEF
+            geotime = torch.cat([mesh_tensor, tic_tensor],
+                                dim=1).to(self.device)
+            with torch.no_grad():
+                sol = self.net_u(geotime).detach().cpu().numpy()
+                
+            
+            ax = axes[0, idx]
+            idx_interface_sol = np.where((sol[:, 0] > 0.05) & (sol[:, 0] < 0.95))[0]
+            ax.scatter(mesh_points[idx_interface_sol, 0], mesh_points[idx_interface_sol, 1],
+                       mesh_points[idx_interface_sol, 2], c=sol[idx_interface_sol, 0],
+                       cmap="coolwarm", label="phi", vmin=0, vmax=1)
+            avg_depth = np.mean(
+                (mesh_points[idx_interface_sol, 0]**2 \
+                + mesh_points[idx_interface_sol, 1]**2 \
+                + mesh_points[idx_interface_sol, 2]**2) ** 0.5
+            )
+            ax.set_title(f"pred t = {tic:.3f} s\ndepth = {avg_depth*100:.1f} um\nat epoch {epoch}")
+            ax.set_axis_off()
+            ax.view_init(elev=30, azim=45)
+            
+            ax = axes[1, idx]
+            truth = np.load(ref_prefix + f"{tic:.3f}" + ".npy")[filter_]
+            diff = np.abs(sol[:, 0] - truth[:, 0])
+            idx_interface_truth = np.where((truth[:, 0] > 0.05) & (truth[:, 0] < 0.95))[0]
+            ax.scatter(mesh_points[idx_interface_truth, 0], mesh_points[idx_interface_truth, 1],
+                          mesh_points[idx_interface_truth, 2], c=truth[idx_interface_truth, 0],
+                          cmap="coolwarm", label="phi", vmin=0, vmax=1)
+            avg_depth = np.mean(
+                (mesh_points[idx_interface_truth, 0]**2 \
+                + mesh_points[idx_interface_truth, 1]**2 \
+                + mesh_points[idx_interface_truth, 2]**2) ** 0.5
+            )
+            ax.set_title(f"ref t = {tic:.3f} s\ndepth = {avg_depth*100:.1f} um\nat epoch {epoch}")
+            ax.set_axis_off()
+            ax.view_init(elev=30, azim=45)
+            diffs.append(diff)
+        acc = np.mean(np.array(diffs)**2)
+        return fig, acc
+            
+            
+            
+        
 
     def plot_samplings(self, geotime, bcdata, icdata, anchors):
         # plot the sampling points
@@ -807,7 +882,7 @@ class PFPINN(torch.nn.Module):
 
         grads = np.clip(grads, 1e-6, 1e6)
         weights = np.mean(grads) / grads
-        weights = np.clip(weights, 1e-8, 1e8)
+        weights = np.clip(weights, 1e-6, 1e6)
         return weights
 
 
