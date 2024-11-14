@@ -67,8 +67,8 @@ class GeoTimeSampler:
         else:
             raise ValueError(f"Unknown strategy {strategy}")
 
-        xyzts = pfp.make_lhs_sampling_data(mins=[-0.02, -0.02, 0, self.time_span[0]+self.time_span[1]*0.05],
-                                          maxs=[0.02, 0.02, 0.02,self.time_span[1]],
+        xyzts = pfp.make_lhs_sampling_data(mins=[-0.04, -0.04, 0, self.time_span[0]+self.time_span[1]*0.05],
+                                          maxs=[0.04, 0.04, 0.04,self.time_span[1]],
                                           num=bc_num)
         xyzts = xyzts[xyzts[:, 0] ** 2 + xyzts[:, 1] ** 2 + xyzts[:, 2] ** 2 <= 0.02 ** 2]
         
