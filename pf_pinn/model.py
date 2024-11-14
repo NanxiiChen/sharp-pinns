@@ -387,16 +387,16 @@ class PFPINN(torch.nn.Module):
         
     #     return (output_pos + output_neg) / 2
     
-#     def forward(self, x):
-#         # x: (x, y, t)
-#         x_embedded = self.embedding(x)
-#         x_neg_embedded = self.embedding(x * torch.tensor([-1, -1, 1, 1], 
-#                                         dtype=x.dtype, device=x.device))
+    # def forward(self, x):
+    #     # x: (x, y, t)
+    #     x_embedded = self.embedding(x)
+    #     x_neg_embedded = self.embedding(x * torch.tensor([-1, -1, 1, 1], 
+    #                                     dtype=x.dtype, device=x.device))
         
-#         output_pos = self.model(x_embedded)
-#         output_neg = self.model(x_neg_embedded)
+    #     output_pos = self.model(x_embedded)
+    #     output_neg = self.model(x_neg_embedded)
         
-#         return (output_pos + output_neg) / 2
+    #     return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
@@ -714,12 +714,13 @@ class PFPINN(torch.nn.Module):
             ax.scatter(mesh_points[idx_interface_sol, 0], mesh_points[idx_interface_sol, 1],
                        mesh_points[idx_interface_sol, 2], c=sol[idx_interface_sol, 0],
                        cmap="coolwarm", label="phi", vmin=0, vmax=1)
-            avg_depth = np.mean(
-                (mesh_points[idx_interface_sol, 0]**2 \
-                + mesh_points[idx_interface_sol, 1]**2 \
-                + mesh_points[idx_interface_sol, 2]**2) ** 0.5
-            )
-            ax.set_title(f"pred t = {tic:.3f} s\ndepth = {avg_depth*100:.1f} um\nat epoch {epoch}")
+            # avg_depth = np.mean(
+            #     (mesh_points[idx_interface_sol, 0]**2 \
+            #     + mesh_points[idx_interface_sol, 1]**2 \
+            #     + mesh_points[idx_interface_sol, 2]**2) ** 0.5
+            # )
+            # ax.set_title(f"pred t = {tic:.3f} s\ndepth = {avg_depth*100:.1f} um\nat epoch {epoch}")
+            ax.set_title(f"pred t = {tic:.3f} s\nat epoch {epoch}")
             ax.set_axis_off()
             ax.view_init(elev=30, azim=45)
             
@@ -730,12 +731,13 @@ class PFPINN(torch.nn.Module):
             ax.scatter(mesh_points[idx_interface_truth, 0], mesh_points[idx_interface_truth, 1],
                           mesh_points[idx_interface_truth, 2], c=truth[idx_interface_truth, 0],
                           cmap="coolwarm", label="phi", vmin=0, vmax=1)
-            avg_depth = np.mean(
-                (mesh_points[idx_interface_truth, 0]**2 \
-                + mesh_points[idx_interface_truth, 1]**2 \
-                + mesh_points[idx_interface_truth, 2]**2) ** 0.5
-            )
-            ax.set_title(f"ref t = {tic:.3f} s\ndepth = {avg_depth*100:.1f} um\nat epoch {epoch}")
+            # avg_depth = np.mean(
+            #     (mesh_points[idx_interface_truth, 0]**2 \
+            #     + mesh_points[idx_interface_truth, 1]**2 \
+            #     + mesh_points[idx_interface_truth, 2]**2) ** 0.5
+            # )
+            # ax.set_title(f"ref t = {tic:.3f} s\ndepth = {avg_depth*100:.1f} um\nat epoch {epoch}")
+            ax.set_title(f"ref t = {tic:.3f} s\nat epoch {epoch}")
             ax.set_axis_off()
             ax.view_init(elev=30, azim=45)
             diffs.append(diff)
