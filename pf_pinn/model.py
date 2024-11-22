@@ -387,16 +387,16 @@ class PFPINN(torch.nn.Module):
         
     #     return (output_pos + output_neg) / 2
     
-    # def forward(self, x):
-    #     # x: (x, y, t)
-    #     x_embedded = self.embedding(x)
-    #     x_neg_embedded = self.embedding(x * torch.tensor([-1, -1, 1, 1], 
-    #                                     dtype=x.dtype, device=x.device))
+#     def forward(self, x):
+#         # x: (x, y, t)
+#         x_embedded = self.embedding(x)
+#         x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1, 1], 
+#                                         dtype=x.dtype, device=x.device))
         
-    #     output_pos = self.model(x_embedded)
-    #     output_neg = self.model(x_neg_embedded)
+#         output_pos = self.model(x_embedded)
+#         output_neg = self.model(x_neg_embedded)
         
-    #     return (output_pos + output_neg) / 2
+#         return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
@@ -696,7 +696,7 @@ class PFPINN(torch.nn.Module):
                                              "ylabel": "y" + geo_label_suffix,
                                              "zlabel": "z" + geo_label_suffix,
                                              "aspect": "auto",
-                                             "box_aspect": (1, 1, 0.5),})
+                                             "box_aspect": (4,2,1),})
 
         mesh_tensor = torch.from_numpy(mesh_points).float()        
         diffs = []
@@ -882,9 +882,9 @@ class PFPINN(torch.nn.Module):
         # weights = np.clip(weights, 1e-8, 1e8)
         # return weights
 
-        grads = np.clip(grads, 1e-6, 1e6)
+        grads = np.clip(grads, 1e-8, 1e8)
         weights = np.mean(grads) / grads
-        weights = np.clip(weights, 1e-6, 1e6)
+        weights = np.clip(weights, 1e-8, 1e8)
         return weights
 
 

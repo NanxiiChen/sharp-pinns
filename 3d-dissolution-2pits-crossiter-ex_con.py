@@ -79,7 +79,7 @@ class GeoTimeSampler:
         
         yzts = func(mins=[self.geo_span[1][0], self.geo_span[2][0], self.time_span[0]],
                     maxs=[self.geo_span[1][1], self.geo_span[2][1], self.time_span[1]],
-                    num=bc_num//4)
+                    num=bc_num//5)
         xmin_yzts = torch.cat([
             torch.full((yzts.shape[0], 1), self.geo_span[0][0], device=yzts.device),
             yzts
@@ -90,7 +90,7 @@ class GeoTimeSampler:
         ], dim=1)
         xzts = func(mins=[self.geo_span[0][0], self.geo_span[2][0], self.time_span[0]],
                     maxs=[self.geo_span[0][1], self.geo_span[2][1], self.time_span[1]],
-                    num=bc_num//4)
+                    num=bc_num//5)
         ymin_xzts = torch.cat([
             xzts[:, 0:1],
             torch.full((xzts.shape[0], 1), self.geo_span[1][0], device=xzts.device),
@@ -104,7 +104,7 @@ class GeoTimeSampler:
         
         xyts = func(mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
                     maxs=[self.geo_span[0][1], self.geo_span[1][1], self.time_span[1]],
-                    num=bc_num//4)
+                    num=bc_num//5)
 
         zmax_xyts = torch.cat([
             xyts[:, 0:2],
@@ -315,12 +315,14 @@ for epoch in range(EPOCHS):
     
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
-    dev_loss = (torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))) / 2
+    dev_loss = (torch.mean(torch.relu(dphi_dt))\
+                + torch.mean(torch.relu(dc_dt))) / 2
     
     
     if epoch % (BREAK_INTERVAL // cross_break) == 0:
         pde_weight, bc_weight, ic_weight, dev_weight = net.compute_gradient_weight(
                 [pde_loss, bc_loss, ic_loss, dev_loss],)
+        
     
     losses = pde_weight * pde_loss + dev_weight * dev_loss \
              + bc_weight * bc_loss + ic_weight * ic_loss
