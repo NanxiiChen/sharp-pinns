@@ -225,7 +225,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -234,7 +234,7 @@ SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
-
+cross_break = 4
 for epoch in range(EPOCHS):
     net.train()
     need_causal = True
@@ -271,7 +271,7 @@ for epoch in range(EPOCHS):
     
     residual_items = net.net_pde(data, return_dt=True)
     pde_residual = residual_items[0] \
-        if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2) \
+        if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // cross_break) \
         else residual_items[1]
 
     
@@ -316,7 +316,7 @@ for epoch in range(EPOCHS):
     dev_loss = (torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))) / 2
     
     
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % (BREAK_INTERVAL // cross_break) == 0:
         pde_weight, bc_weight, ic_weight, dev_weight = net.compute_gradient_weight(
                 [pde_loss, bc_loss, ic_loss, dev_loss],)
     
@@ -327,14 +327,26 @@ for epoch in range(EPOCHS):
         grads = net.gradient(losses)
         writer.add_scalar("grad/grads", grads.abs().mean(), epoch)
         
-
+    # if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // cross_break):
+    #     # train phi, freeze c
+    #     for param in net.model.model_cl.parameters():
+    #         param.requires_grad = False
+    #     for param in net.model.model_phi.parameters():
+    #         param.requires_grad = True
+    # else:
+    #     # train c, freeze phi
+    #     for param in net.model.model_phi.parameters():
+    #         param.requires_grad = False
+    #     for param in net.model.model_cl.parameters():
+    #         param.requires_grad = True
+            
     opt.zero_grad()
     losses.backward()
     opt.step()
     scheduler.step()
 
 
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % (BREAK_INTERVAL // cross_break) == 0:
         
         print(f"epoch {epoch}: pde_loss {pde_loss:.2e}, "
               f"bc_loss {bc_loss:.2e}, ic_loss {ic_loss:.2e}, "
@@ -342,7 +354,7 @@ for epoch in range(EPOCHS):
               f"pde_weight {pde_weight:.2e}, "
               f"bc_weight {bc_weight:.2e}, ic_weight {ic_weight:.2e}, "
               f"dev_weight {dev_weight:.2e}")
-        if epoch % BREAK_INTERVAL < BREAK_INTERVAL//2 :
+        if epoch % BREAK_INTERVAL < BREAK_INTERVAL//cross_break :
             writer.add_scalar("loss/ac_loss", pde_loss, epoch)
             writer.add_scalar("weight/ac_weight", pde_weight, epoch)
         else:
@@ -360,7 +372,7 @@ for epoch in range(EPOCHS):
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
         
-        if epoch % (BREAK_INTERVAL//2) == 0:
+        if epoch % (BREAK_INTERVAL//cross_break) == 0:
               
             # bins = torch.linspace(time_span[0], time_span[1]**(1/2), num_seg + 1, device=net.device)**2
             bins = torch.linspace(time_span[0], time_span[1], num_seg + 1, device=net.device)
@@ -377,7 +389,7 @@ for epoch in range(EPOCHS):
             
             
             ax = axes[1]
-            if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2):
+            if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // cross_break):
                 ax.plot(ts, pde_causal_weight.cpu().numpy(), label="ac")
             else:
                 ax.plot(ts, pde_causal_weight.cpu().numpy(), label="ch")
@@ -385,7 +397,7 @@ for epoch in range(EPOCHS):
             ax.set_ylabel("Causal Weights")
             ax.legend(loc="upper right")
 
-            if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2):
+            if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // cross_break):
                 ax = axes[2]
                 ax.plot(ts, pde_seg_loss.detach().cpu().numpy(), label="ac")
                 ax.set_title("AC segment loss")

@@ -223,7 +223,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.Tanh()
+        self.act = torch.nn.GELU()
         
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -307,36 +307,32 @@ class UNetPINN(torch.nn.Module):
         return self.out_layer(x)
         
 
-
-# class PFEncodedPINN(torch.nn.Module):
-#     def __init__(self, in_dim, hidden_dim, out_dim, layers):
-#         super().__init__()
-#         self.model_cl = ResNet(in_dim//2, hidden_dim//2, out_dim, layers//2)
-#         self.model_phi = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
-
-#     def forward(self, x):
-#         phi = torch.tanh(self.model_phi(x)) / 2 + 1/2
-#         cl = torch.sigmoid(self.model_cl(x[:, 0:64])) * (1 - CSE + CLE)
-#         cs = cl + (CSE - CLE)
-#         c = (-2*phi**3+3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
-#         return torch.cat([phi, c], dim=1)
-
 class PFEncodedPINN(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, layers):
         super().__init__()
         self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
-        # self.model = KAN([128] + [64]*3 + [2])
         
-
     def forward(self, x):
         sol = self.model(x)
         phi = torch.tanh(sol[:, 0:1]) / 2 + 1/2
         cl = torch.tanh(sol[:, 1:2]) / 2 + 1/2
         cl = cl * (1 - CSE + CLE)
-        # cs = cl + (CSE - CLE)
-        # c = (-2*phi**3 + 3*phi**2) * cs + (1 + 2*phi**3 - 3*phi**2) * cl
         c = (CSE - CLE) * (-2*phi**3 + 3*phi**2) + cl
         return torch.cat([phi, c], dim=1)
+
+class PFEncodedPINNTwoNet(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.model_cl = ModifiedMLP(in_dim, hidden_dim//2, out_dim//2, layers)
+        self.model_phi = ModifiedMLP(in_dim, hidden_dim//2, out_dim//2, layers)
+        
+    def forward(self, x):
+        phi = torch.tanh(self.model_phi(x)[:, 0:1]) / 2 + 1/2
+        cl = torch.tanh(self.model_cl(x)[:, 0:1]) / 2 + 1/2
+        cl = cl * (1 - CSE + CLE)
+        c = (CSE - CLE) * (-2*phi**3 + 3*phi**2) + cl
+        return torch.cat([phi, c], dim=1)
+
 
 
         
@@ -355,7 +351,7 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
-        self.model = PFEncodedPINN(256, 128, 2, 4).to(self.device)
+        self.model = PFEncodedPINN(256, 200, 2, 6).to(self.device)
 
 
     def auto_grad(self, up, down):
@@ -374,10 +370,10 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-    def forward(self, x):
-        # x: (x, y, t)
-        x = self.embedding(x)
-        return self.model(x)
+    # def forward(self, x):
+    #     # x: (x, y, t)
+    #     x = self.embedding(x)
+    #     return self.model(x)
     
     # def forward(self, x):
     #     # x: (x, y, t)
@@ -387,16 +383,16 @@ class PFPINN(torch.nn.Module):
         
     #     return (output_pos + output_neg) / 2
     
-#     def forward(self, x):
-#         # x: (x, y, t)
-#         x_embedded = self.embedding(x)
-#         x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1, 1], 
-#                                         dtype=x.dtype, device=x.device))
+    def forward(self, x):
+        # x: (x, y, t)
+        x_embedded = self.embedding(x)
+        x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
+                                        dtype=x.dtype, device=x.device))
         
-#         output_pos = self.model(x_embedded)
-#         output_neg = self.model(x_neg_embedded)
+        output_pos = self.model(x_embedded)
+        output_neg = self.model(x_neg_embedded)
         
-#         return (output_pos + output_neg) / 2
+        return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]

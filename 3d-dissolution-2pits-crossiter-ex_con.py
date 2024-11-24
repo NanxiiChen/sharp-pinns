@@ -331,7 +331,19 @@ for epoch in range(EPOCHS):
         grads = net.gradient(losses)
         writer.add_scalar("grad/grads", grads.abs().mean(), epoch)
         
-
+    # if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // cross_break):
+    #     # train phi, freeze c
+    #     for param in net.model.model_cl.parameters():
+    #         param.requires_grad = False
+    #     for param in net.model.model_phi.parameters():
+    #         param.requires_grad = True
+    # else:
+    #     # train c, freeze phi
+    #     for param in net.model.model_phi.parameters():
+    #         param.requires_grad = False
+    #     for param in net.model.model_cl.parameters():
+    #         param.requires_grad = True
+            
     opt.zero_grad()
     losses.backward()
     opt.step()
