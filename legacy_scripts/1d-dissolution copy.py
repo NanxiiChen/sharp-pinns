@@ -11,7 +11,7 @@ import torch
 import datetime
 import matplotlib
 matplotlib.use("Agg")
-matplotlib.rcParams.update(matplotlib_configs)
+# matplotlib.rcParams.update(matplotlib_configs)
 
 
 config = configparser.ConfigParser()

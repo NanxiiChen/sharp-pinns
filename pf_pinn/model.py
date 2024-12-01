@@ -223,7 +223,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.GELU()
+        self.act = torch.nn.Tanh()
         
         # use xavier initialization
         torch.nn.init.xavier_normal_(self.gate_layer_1.weight)
@@ -313,9 +313,10 @@ class PFEncodedPINN(torch.nn.Module):
         self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
         
     def forward(self, x):
-        sol = self.model(x)
-        phi = torch.tanh(sol[:, 0:1]) / 2 + 1/2
-        cl = torch.tanh(sol[:, 1:2]) / 2 + 1/2
+        sol = torch.tanh(self.model(x)) / 2 + 1/2
+        # use softplus to ensure the output is in [0, 1]
+        # normed = F.softplus(sol) / (F.softplus(sol) + 1)
+        phi, cl = torch.split(sol, 1, dim=1)
         cl = cl * (1 - CSE + CLE)
         c = (CSE - CLE) * (-2*phi**3 + 3*phi**2) + cl
         return torch.cat([phi, c], dim=1)
@@ -351,7 +352,7 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
-        self.model = PFEncodedPINN(256, 200, 2, 6).to(self.device)
+        self.model = PFEncodedPINN(256, 128, 2, 4).to(self.device)
 
 
     def auto_grad(self, up, down):
@@ -370,10 +371,10 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-    # def forward(self, x):
-    #     # x: (x, y, t)
-    #     x = self.embedding(x)
-    #     return self.model(x)
+    def forward(self, x):
+        # x: (x, y, t)
+        x = self.embedding(x)
+        return self.model(x)
     
     # def forward(self, x):
     #     # x: (x, y, t)
@@ -383,16 +384,16 @@ class PFPINN(torch.nn.Module):
         
     #     return (output_pos + output_neg) / 2
     
-    def forward(self, x):
-        # x: (x, y, t)
-        x_embedded = self.embedding(x)
-        x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
-                                        dtype=x.dtype, device=x.device))
+#     def forward(self, x):
+#         # x: (x, y, t)
+#         x_embedded = self.embedding(x)
+#         x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1, 1], 
+#                                         dtype=x.dtype, device=x.device))
         
-        output_pos = self.model(x_embedded)
-        output_neg = self.model(x_neg_embedded)
+#         output_pos = self.model(x_embedded)
+#         output_neg = self.model(x_neg_embedded)
         
-        return (output_pos + output_neg) / 2
+#         return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]

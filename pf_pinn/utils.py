@@ -20,7 +20,7 @@ def logarithmic_mean(al, ar):
     return (al + ar) / 2.0 / F
 
 
-matplotlib_configs = {
-    "font.size": 14,
-    "axes.titlesize": 14,
-}
+# matplotlib_configs = {
+#     "font.size": 14,
+#     "axes.titlesize": 14,
+# }

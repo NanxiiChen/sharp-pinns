@@ -242,7 +242,7 @@ SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
-cross_break = 4
+cross_break = 2
 
 for epoch in range(EPOCHS):
     net.train()

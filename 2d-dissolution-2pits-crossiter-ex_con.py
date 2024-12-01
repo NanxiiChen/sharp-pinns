@@ -226,8 +226,8 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 
 criteria = torch.nn.MSELoss()
-opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=1000, gamma=0.9)
+opt = torch.optim.Adam(net.parameters(), lr=LR, weight_decay=1e-6)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.9)
 opt_method = "adam"
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
@@ -236,7 +236,7 @@ ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 SAMPLING_STRATEGY = eval(config.get("TRAIN", "SAMPLING_STRATEGY"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
-cross_break = 4
+cross_break = 2
 for epoch in range(EPOCHS):
     # if epoch == 200:
     #     BREAK_INTERVAL *= 2
