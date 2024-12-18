@@ -223,7 +223,7 @@ class ModifiedMLP(torch.nn.Module):
         ])
 
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.GELU()
+        self.act = torch.nn.Tanh()
         self.norm = norm
         
         # use xavier initialization
@@ -353,7 +353,7 @@ class PFPINN(torch.nn.Module):
         self.act = act
         self.embedding_features = embedding_features
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
-        self.model = PFEncodedPINN(256, 200, 2, 6).to(self.device)
+        self.model = PFEncodedPINN(256, 128, 2, 4).to(self.device)
 
 
     def auto_grad(self, up, down):
@@ -372,10 +372,10 @@ class PFPINN(torch.nn.Module):
                 layers.append((f"act{i}", self.act()))
         return OrderedDict(layers)
 
-    # def forward(self, x):
-    #     # x: (x, y, t)
-    #     x = self.embedding(x)
-    #     return self.model(x)
+    def forward(self, x):
+        # x: (x, y, t)
+        x = self.embedding(x)
+        return self.model(x)
     
     # def forward(self, x):
     #     # x: (x, y, t)
@@ -385,16 +385,16 @@ class PFPINN(torch.nn.Module):
         
     #     return (output_pos + output_neg) / 2
     
-    def forward(self, x):
-        # x: (x, y, t)
-        x_embedded = self.embedding(x)
-        x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
-                                        dtype=x.dtype, device=x.device))
+    # def forward(self, x):
+    #     # x: (x, y, t)
+    #     x_embedded = self.embedding(x)
+    #     x_neg_embedded = self.embedding(x * torch.tensor([-1, 1, 1], 
+    #                                     dtype=x.dtype, device=x.device))
         
-        output_pos = self.model(x_embedded)
-        output_neg = self.model(x_neg_embedded)
+    #     output_pos = self.model(x_embedded)
+    #     output_neg = self.model(x_neg_embedded)
         
-        return (output_pos + output_neg) / 2
+    #     return (output_pos + output_neg) / 2
 
     def net_u(self, x):
         # compute the pde solution `u`: [phi, c]
