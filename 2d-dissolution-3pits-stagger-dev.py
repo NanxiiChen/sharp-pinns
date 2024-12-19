@@ -324,6 +324,7 @@ for epoch in range(EPOCHS):
     else:
         losses = ac_weight * ac_loss + ch_weight * ch_loss \
             + bc_weight * bc_loss + ic_weight * ic_loss + dev_weight * dev_loss
+
     
     opt.zero_grad()
     losses.backward()
