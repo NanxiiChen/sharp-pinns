@@ -1,3 +1,4 @@
+from pyDOE import lhs
 import matplotlib.pyplot as plt
 import configparser
 import pandas as pd
@@ -13,9 +14,10 @@ matplotlib.use("Agg")
 config = configparser.ConfigParser()
 config.read("config.ini")
 
-now = "2d-1pit-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+now = "2d-2pits-" + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 save_root = "/root/tf-logs"
 writer = SummaryWriter(log_dir=f"{save_root}/" + now)
+
 
 
 class GeoTimeSampler:
@@ -46,64 +48,56 @@ class GeoTimeSampler:
 
         return geotime.float().requires_grad_(True)
 
+
     def bc_sample(self, bc_num: int):
 
-
-        xyts = pfp.make_lhs_sampling_data(
-            mins=[-0.05, 0, self.time_span[0]+self.time_span[1]*0.1],
-            maxs=[0.05, 0.025, self.time_span[1]],
-            num=bc_num)
+        xyts = pfp.make_lhs_sampling_data(mins=[-0.025, 0, self.time_span[0]+self.time_span[1]*0.1],
+                                          maxs=[0.025, 0.025, self.time_span[1]],
+                                          num=bc_num)
         xyts = xyts[xyts[:, 0] ** 2 + xyts[:, 1] ** 2 <= 0.025 ** 2]
+        xyts_left = xyts.clone()
+        xyts_left[:, 0:1] -= 0.15
+        xyts_right = xyts.clone()
+        xyts_right[:, 0:1] += 0.15
 
         xts = pfp.make_lhs_sampling_data(
             mins=[self.geo_span[0][0], self.time_span[0]],
             maxs=[self.geo_span[0][1], self.time_span[1]],
             num=bc_num//2)
-
-        top = torch.cat([
-            xts[:, 0:1],
-            torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device),
-            xts[:, 1:2]], dim=1)
+        top = torch.cat([xts[:, 0:1],
+                        torch.full((xts.shape[0], 1), self.geo_span[1][1], device=xts.device),
+                        xts[:, 1:2]], dim=1)  # 顶边
 
         yts = pfp.make_lhs_sampling_data(
             mins=[self.geo_span[1][0], self.time_span[0]],
             maxs=[self.geo_span[1][1], self.time_span[1]],
             num=bc_num//2)
+
         left = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][0], device=yts.device),
                           yts[:, 0:1],
-                          yts[:, 1:2]], dim=1)
+                          yts[:, 1:2]], dim=1)  # 左边
+
         right = torch.cat([torch.full((yts.shape[0], 1), self.geo_span[0][1], device=yts.device),
                            yts[:, 0:1],
-                           yts[:, 1:2]], dim=1)
-        xyts = torch.cat([xyts,top,left,right], dim=0)
+                           yts[:, 1:2]], dim=1)  # 右边
+
+        xyts = torch.cat([xyts_left, xyts_right,top,left,right], dim=0)
 
         return xyts.float().requires_grad_(True)
 
     def ic_sample(self, ic_num):
         xys = pfp.make_lhs_sampling_data(mins=[self.geo_span[0][0], self.geo_span[1][0]],
-                                        maxs=[self.geo_span[0][1],
-                                            self.geo_span[1][1]],
-                                        num=ic_num)
-
-        xys_local = pfp.make_lhs_sampling_data(mins=[-0.1, 0],
-                                               maxs=[0.1, 0.1,],
-                                               num=ic_num*4)
+                                            maxs=[self.geo_span[0][1],self.geo_span[1][1]],
+                                            num=ic_num)
+        xys_local = pfp.make_lhs_sampling_data(mins=[-0.3, 0], maxs=[0.3, 0.15], num=ic_num*6)
         xys = torch.cat([xys, xys_local], dim=0)
-        xyts = torch.cat([xys, torch.full((xys.shape[0], 1),
-                         self.time_span[0], device=xys.device)], dim=1)
+        
+        xyts = torch.cat([xys,
+                          torch.full((xys.shape[0], 1),
+                        self.time_span[0], device=xys.device)], dim=1)
         return xyts.float().requires_grad_(True)
-    
-    
-    def flux_sample(self, bc_num: int,):
-        xts = pfp.make_lhs_sampling_data(mins=[self.geo_span[0][0], self.time_span[0]],
-                                        maxs=[self.geo_span[0][1], self.time_span[1]],
-                                        num=bc_num)
-        bottom = torch.cat([xts[:, 0:1],
-                            torch.full((xts.shape[0], 1), self.geo_span[1][0], device="cuda"),
-                            xts[:, 1:2]], dim=1)
-        return bottom.float().requires_grad_(True)
-    
-    
+
+
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 num_causal_seg = config.getint("TRAIN", "NUM_CAUSAL_SEG")
@@ -144,9 +138,10 @@ CSE = config.getfloat("PARAM", "CSE")
 CLE = eval(config.get("PARAM", "CLE"))
 MESH_POINTS = np.load(config.get("TRAIN", "MESH_POINTS").strip('"')) * GEO_COEF
 
-
 def ic_func(xts):
-    r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
+    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
+                   + xts[:, 1:2]**2).detach()
+    # c = phi = (r2 > 0.05**2).float()
     with torch.no_grad():
         phi = 1 - (1 - torch.tanh(torch.sqrt(torch.tensor(OMEGA_PHI)) /
                                   torch.sqrt(2 * torch.tensor(ALPHA_PHI)) * (r-0.05) / GEO_COEF)) / 2
@@ -156,22 +151,24 @@ def ic_func(xts):
 
 
 def bc_func(xts):
-    r = torch.sqrt(xts[:, 0:1]**2 + xts[:, 1:2]**2).detach()
+    r = torch.sqrt((torch.abs(xts[:, 0:1]) - 0.15)**2
+                   + xts[:, 1:2]**2).detach()
     with torch.no_grad():
         phi = (r > 0.05).float()
         c = phi.detach()
     return torch.cat([phi, c], dim=1)
 
 
-def split_temporal_coords_into_segments(ts, time_span, num_causal_seg):
+def split_temporal_coords_into_segments(ts, time_span, num_seg):
     # Split the temporal coordinates into segments
     # Return the indexes of the temporal coordinates
     ts = ts.cpu()
     min_t, max_t = time_span
-    # bins = torch.linspace(min_t, max_t**(1/2), num_causal_seg + 1, device=ts.device)**2
-    bins = torch.linspace(min_t, max_t, num_causal_seg + 1, device=ts.device)
+    # bins = torch.linspace(min_t, max_t**(1/2), num_seg + 1, device=ts.device)**2
+    bins = torch.linspace(min_t, max_t, num_seg + 1, device=ts.device)
     indices = torch.bucketize(ts, bins)
-    return [torch.where(indices-1 == i)[0] for i in range(num_causal_seg)]
+    return [torch.where(indices-1 == i)[0] for i in range(num_seg)]
+
 
 
 criteria = torch.nn.MSELoss()
@@ -183,8 +180,6 @@ BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
 ICDATA_SHAPE = eval(config.get("TRAIN", "ICDATA_SHAPE"))
 RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
-
-
 
 for epoch in range(EPOCHS):
 
