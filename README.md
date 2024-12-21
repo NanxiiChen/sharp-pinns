@@ -4,9 +4,14 @@ Staggered training scheme for physics-informed neural networks: solving complex 
 
 ## Overview
 
-<img src="./img/stagger.png" width="600">
+### Methodology
 
-<img src="./img/hard-constraint.png" width="600">
+<img src="./img/stagger.png">
+
+<img src="./img/hard-constraint.png">
+
+
+### Representative results
 
 <img src="./img/2d-2pits-phi-fields-comparison.png">
 
