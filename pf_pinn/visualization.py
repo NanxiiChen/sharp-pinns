@@ -105,15 +105,6 @@ class Visualizer:
     def plot_3d_geo_predict(self, ref_prefix, epoch, ts, mesh_points):
         geo_label_suffix = f" [{1/GEO_COEF:.0e}m]"
         time_label_suffix = f" [{1/TIME_COEF:.0e}s]"
-        # filter_
-        """
-        (MESH_POINTS[:, 0] >= geo_span[0][0]) &
-        (MESH_POINTS[:, 0] <= geo_span[0][1]) &
-        (MESH_POINTS[:, 1] >= geo_span[1][0]) &
-        (MESH_POINTS[:, 1] <= geo_span[1][1]) &
-        (MESH_POINTS[:, 2] >= geo_span[2][0]) &
-        (MESH_POINTS[:, 2] <= geo_span[2][1])
-        """
         
         filter_ = np.where(
             (mesh_points[:, 0] >= GEO_SPAN[0][0]) &
@@ -159,16 +150,24 @@ class Visualizer:
             ax = axes[1, idx]
             truth = np.load(ref_prefix + f"{tic:.3f}" + ".npy")[filter_]
             diff = np.abs(sol[:, 0] - truth[:, 0])
-            idx_interface_truth = np.where((truth[:, 0] > 0.05) & (truth[:, 0] < 0.95))[0]
-            ax.scatter(mesh_points[idx_interface_truth, 0], mesh_points[idx_interface_truth, 1],
-                          mesh_points[idx_interface_truth, 2], c=truth[idx_interface_truth, 0],
-                          cmap="coolwarm", label="phi", vmin=0, vmax=1)
             
-            ax.set_title(f"ref t = {tic:.3f} s\nat epoch {epoch}")
+            # idx_interface_truth = np.where((truth[:, 0] > 0.05) & (truth[:, 0] < 0.95))[0]
+            # ax.scatter(mesh_points[idx_interface_truth, 0], mesh_points[idx_interface_truth, 1],
+            #               mesh_points[idx_interface_truth, 2], c=truth[idx_interface_truth, 0],
+            #               cmap="coolwarm", label="phi", vmin=0, vmax=1)
+            idx_interface_diff = np.where(diff > 0.05)[0]
+            ax.scatter(mesh_points[idx_interface_diff, 0], mesh_points[idx_interface_diff, 1],
+                          mesh_points[idx_interface_diff, 2], c=diff[idx_interface_diff],
+                          cmap="coolwarm", label="error")
+            
+            ax.set_title(f"error t = {tic:.3f} s\nat epoch {epoch}")
+            # colorbar 
+            cbar = fig.colorbar(ax.collections[0], ax=ax, orientation="horizontal")
+            cbar.set_label("error")
             ax.set_axis_off()
             ax.view_init(elev=30, azim=45)
-            diffs.append(diff)
-        acc = np.mean(np.array(diffs)**2)
+            diffs.append(np.mean(diff**2))
+        acc = np.mean(np.array(diffs))
         return fig, acc
             
 

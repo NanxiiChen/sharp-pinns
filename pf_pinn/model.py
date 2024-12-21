@@ -58,7 +58,7 @@ class PFEncodedPINNTwoNet(torch.nn.Module):
 class PFPINN(torch.nn.Module):
     def __init__(
         self,
-        in_dim, hidden_dim, out_dim, layers,
+        in_dim=256, hidden_dim=200, out_dim=2, layers=6,
         embedding_features=64,
         symmetrical_forward=True
     ):
@@ -97,16 +97,14 @@ class PFPINN(torch.nn.Module):
         return self.forward(x)
     
     
-    def net_dev(self, x, on="y"):
+    def net_dev(self, x, on:int=0):
         # compute the derivative of the pde solution `u` w.r.t. x: [dphi/dx, dc/dx] or [dphi/dy, dc/dy]
         x = x.to(self.device)
         out = self.forward(x)
         dev_phi = self.auto_grad(out[:, 0:1], x)
         dev_c = self.auto_grad(out[:, 1:2], x)
-        if on == "y":
-            return torch.cat([dev_phi[:, 1:2], dev_c[:, 1:2]], dim=1)
-        elif on == "x":
-            return torch.cat([dev_phi[:, 0:1], dev_c[:, 0:1]], dim=1)
+        return torch.cat([dev_phi[:, on:on+1], dev_c[:, on:on+1]], dim=1)
+
 
     def net_pde(self, geotime, return_dt=False):
         # compute the pde residual

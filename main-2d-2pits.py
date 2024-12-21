@@ -107,7 +107,7 @@ net = pfp.PFPINN(
     out_dim=config.getint("TRAIN", "OUT_DIM"),
     hidden_dim=config.getint("TRAIN", "HIDDEN_DIM"),
     layers=config.getint("TRAIN", "LAYERS"),
-    symmetrical_forward=bool(config.get("TRAIN", "SYMMETRIC")),   
+    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),   
 )
 visualizer = pfp.Visualizer(net)
 loss_manager = pfp.LossManager(writer, net)
@@ -209,7 +209,7 @@ for epoch in range(EPOCHS):
     
     residual_items = net.net_pde(data, return_dt=True)
     pde_residual = residual_items[0] \
-        if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2) \
+        if pde == "ac" \
         else residual_items[1]
 
     
