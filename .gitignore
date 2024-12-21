@@ -15,7 +15,6 @@ Asana-Math/
 params-analysis-2d-1pits/
 */model_legacy.py
 data/2d-refined/*
-*.png
 backups/
 
 # Byte-compiled / optimized / DLL files

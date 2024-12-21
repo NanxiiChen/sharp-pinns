@@ -1,8 +1,18 @@
 # PINN stagger
 
+Staggered training scheme for physics-informed neural networks: solving complex phase-field corrosion problems with higher efficiency and accuracy
+
+## Overview
+
+<img src="./img/stagger.png" width="600">
+
+<img src="./img/hard-constraint.png" width="600">
+
+<img src="./img/2d-2pits-phi-fields-comparison.png">
+
+<img src="./img/3d-1pits-phi-fields.png">
 
 ## Configuration
-
 
 ### 2d-1pit
 
