@@ -25,7 +25,7 @@ TIME_SPAN = eval(config.get("TRAIN", "TIME_SPAN"))
 GEO_SPAN = eval(config.get("TRAIN", "GEO_SPAN"))
 
 
-class Visualizer:
+class Evaluator:
     def __init__(self, pinn):
         self.pinn = pinn
 

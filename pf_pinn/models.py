@@ -5,7 +5,7 @@ import configparser
 
 from matplotlib import gridspec
 from .embeddings import SpatialTemporalFourierEmbedding
-from .nnlayers import ModifiedMLP
+from .archs import ModifiedMLP
 
 
 config = configparser.ConfigParser()

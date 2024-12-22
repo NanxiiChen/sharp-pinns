@@ -115,7 +115,7 @@ net = pfp.PFPINN(
     layers=config.getint("TRAIN", "LAYERS"),
     symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),   
 )
-visualizer = pfp.Visualizer(net)
+evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)
 causal_weighter = pfp.CausalWeighter(num_causal_seg)
 
@@ -270,7 +270,7 @@ for epoch in range(EPOCHS):
         writer.add_figure("fig/causal_weights", fig, epoch)
         
         
-        fig, acc = visualizer.plot_predict(ts=TARGET_TIMES,
+        fig, acc = evaluator.plot_predict(ts=TARGET_TIMES,
                                         mesh_points=MESH_POINTS,
                                         ref_prefix=REF_PREFIX)
 
