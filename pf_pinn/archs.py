@@ -1,6 +1,21 @@
 import torch
 
 
+class MLP(torch.nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+        super().__init__()
+        self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
+        self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)])
+        self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
+        self.act = torch.nn.GELU()
+        
+    def forward(self, x):
+        x = self.act(self.in_layer(x))
+        for layer in self.hidden_layers:
+            x = self.act(layer(x))
+        return self.out_layer(x)
+        
+
 class MultiScaleFeatureFusion(torch.nn.Module):
     def __init__(self, in_dim, hidden_dim):
         super().__init__()

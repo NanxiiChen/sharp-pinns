@@ -96,6 +96,7 @@ class GeoTimeSampler:
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 num_causal_seg = config.getint("TRAIN", "NUM_CAUSAL_SEG")
+causal = eval(config.get("TRAIN", "CAUSAL_WEIGHTING"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
     in_dim=config.getint("TRAIN", "IN_DIM"),
@@ -106,7 +107,8 @@ net = pfp.PFPINN(
 )
 evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)
-causal_weighter = pfp.CausalWeighter(num_causal_seg)
+if causal:
+    causal_weighter = pfp.CausalWeighter(num_causal_seg)
 
 resume = config.get("TRAIN", "RESUME").strip('"')
 try:
@@ -225,13 +227,16 @@ for epoch in range(EPOCHS):
     # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
     # flux_forward = net.net_dev(flux_data, on="y")
     
-    pde_seg_loss = torch.zeros(num_causal_seg, device=net.device)
-    for seg_idx, data_idx in enumerate(indices):
-        pde_seg_loss[seg_idx] = torch.mean(pde_residual[data_idx]**2)
-    pde_causal_weight = causal_weighter.compute_causal_weights(pde_seg_loss)
-    causal_weighter.update_causal_configs(pde_causal_weight, epoch)
- 
-    pde_loss = torch.sum(pde_causal_weight * pde_seg_loss)
+    if causal:
+        pde_seg_loss = torch.zeros(num_causal_seg, device=net.device)
+        for seg_idx, data_idx in enumerate(indices):
+            pde_seg_loss[seg_idx] = torch.mean(pde_residual[data_idx]**2)
+        pde_causal_weight = causal_weighter.compute_causal_weights(pde_seg_loss)
+        causal_weighter.update_causal_configs(pde_causal_weight, epoch)
+        pde_loss = torch.sum(pde_causal_weight * pde_seg_loss)
+    else:
+        pde_loss = torch.mean(pde_residual**2)
+        
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     irr_loss = torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))
@@ -262,12 +267,13 @@ for epoch in range(EPOCHS):
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
               
 
-        bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
-        ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
-        fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
-                                                  pde, epoch, ts)
-        writer.add_figure("fig/causal_weights", fig, epoch)
-        
+        if causal:
+            bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
+            ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
+            fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
+                                                    pde, epoch, ts)
+            writer.add_figure("fig/causal_weights", fig, epoch)
+            
         
         fig, acc = evaluator.plot_predict(ts=TARGET_TIMES,
                                         mesh_points=MESH_POINTS,
