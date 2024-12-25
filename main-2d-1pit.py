@@ -226,7 +226,7 @@ for epoch in range(EPOCHS):
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
     # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
-    # flux_forward = net.net_dev(flux_data, on="y")
+    # flux_forward = net.net_dev(flux_data, on=1)
     
     if causal:
         pde_seg_loss = torch.zeros(num_causal_seg, device=net.device)

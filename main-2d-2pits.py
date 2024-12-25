@@ -96,7 +96,15 @@ class GeoTimeSampler:
                           torch.full((xys.shape[0], 1),
                         self.time_span[0], device=xys.device)], dim=1)
         return xyts.float().requires_grad_(True)
-
+    
+    def flux_sample(self, bc_num: int,):
+        xts = pfp.make_lhs_sampling_data(mins=[self.geo_span[0][0], self.time_span[0]],
+                                        maxs=[self.geo_span[0][1], self.time_span[1]],
+                                        num=bc_num)
+        bottom = torch.cat([xts[:, 0:1],
+                            torch.full((xts.shape[0], 1), self.geo_span[1][0], device="cuda"),
+                            xts[:, 1:2]], dim=1)
+        return bottom.float().requires_grad_(True)
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
@@ -108,7 +116,8 @@ net = pfp.PFPINN(
     out_dim=config.getint("TRAIN", "OUT_DIM"),
     hidden_dim=config.getint("TRAIN", "HIDDEN_DIM"),
     layers=config.getint("TRAIN", "LAYERS"),
-    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),   
+    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),
+    arch=config.get("TRAIN", "ARCH").strip('"')
 )
 evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)
@@ -175,7 +184,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.8)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -207,6 +216,9 @@ for epoch in range(EPOCHS):
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
+        
+        fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
+        writer.add_figure("sampling", fig, epoch)
     
     
     residual_items = net.net_pde(data, return_dt=True)
@@ -221,7 +233,7 @@ for epoch in range(EPOCHS):
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
     # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
-    # flux_forward = net.net_dev(flux_data, on="y")
+    # flux_forward = net.net_dev(flux_data, on=1)
     
     if causal:
         pde_seg_loss = torch.zeros(num_causal_seg, device=net.device)

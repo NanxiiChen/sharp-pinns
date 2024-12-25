@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 class CausalWeighter:
     def __init__(self, num_causal_seg) -> None:
         self.causal_configs = {
-                "eps": 1e-4,
+                "eps": 1e-5,
                 "min_thresh": 0.99,
                 "step": 10,
                 "mean_thresh": 0.5,

@@ -29,9 +29,11 @@ GEO_SPAN = eval(config.get("TRAIN", "GEO_SPAN"))
         
 
 class PFEncodedPINN(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, layers):
+    def __init__(self, in_dim, hidden_dim, out_dim, layers, arch="modifiedmlp"):
         super().__init__()
-        self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)
+        self.model = ModifiedMLP(in_dim, hidden_dim, out_dim, layers)\
+            if arch == "modifiedmlp" \
+            else MLP(in_dim, hidden_dim, out_dim, layers)
         
     def forward(self, x):
         sol = torch.tanh(self.model(x)) / 2 + 1/2
@@ -60,7 +62,8 @@ class PFPINN(torch.nn.Module):
         self,
         in_dim=256, hidden_dim=200, out_dim=2, layers=6,
         embedding_features=64,
-        symmetrical_forward=True
+        symmetrical_forward=True,
+        arch="modifiedmlp"
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -68,7 +71,7 @@ class PFPINN(torch.nn.Module):
                                    else "cpu")
         self.embedding_features = embedding_features
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
-        self.model = PFEncodedPINN(in_dim, hidden_dim, out_dim, layers).to(self.device)
+        self.model = PFEncodedPINN(in_dim, hidden_dim, out_dim, layers, arch=arch).to(self.device)
         
         self.symmetrical_forward = symmetrical_forward
 
