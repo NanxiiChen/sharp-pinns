@@ -13,7 +13,7 @@ Staggered training scheme for physics-informed neural networks: solving complex 
 
 ### Representative results
 
-<img src="./img/2d-2pits-phi-fields-comparison.png">
+<img src="./img/2d-2pits-phi-fields-comparison-all.png">
 
 <img src="./img/3d-1pits-phi-fields.png">
 
