@@ -110,6 +110,7 @@ geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 num_causal_seg = config.getint("TRAIN", "NUM_CAUSAL_SEG")
 causal = eval(config.get("TRAIN", "CAUSAL_WEIGHTING"))
+fourier_embedding = eval(config.get("TRAIN", "FOURIER_EMBEDDING"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
     in_dim=config.getint("TRAIN", "IN_DIM"),
@@ -117,7 +118,8 @@ net = pfp.PFPINN(
     hidden_dim=config.getint("TRAIN", "HIDDEN_DIM"),
     layers=config.getint("TRAIN", "LAYERS"),
     symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),
-    arch=config.get("TRAIN", "ARCH").strip('"')
+    arch=config.get("TRAIN", "ARCH").strip('"'),
+    fourier_embedding=fourier_embedding
 )
 evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)

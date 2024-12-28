@@ -63,14 +63,17 @@ class PFPINN(torch.nn.Module):
         in_dim=256, hidden_dim=200, out_dim=2, layers=6,
         embedding_features=64,
         symmetrical_forward=True,
-        arch="modifiedmlp"
+        arch="modifiedmlp",
+        fourier_embedding=True
     ):
         super().__init__()
         self.device = torch.device("cuda"
                                    if torch.cuda.is_available()
                                    else "cpu")
         self.embedding_features = embedding_features
-        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)
+        self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)\
+            if fourier_embedding \
+            else torch.nn.Linear(DIM+1, embedding_features*4).to(self.device)
         self.model = PFEncodedPINN(in_dim, hidden_dim, out_dim, layers, arch=arch).to(self.device)
         
         self.symmetrical_forward = symmetrical_forward

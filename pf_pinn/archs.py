@@ -7,7 +7,7 @@ class MLP(torch.nn.Module):
         self.in_layer = torch.nn.Linear(in_dim, hidden_dim)
         self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(layers)])
         self.out_layer = torch.nn.Linear(hidden_dim, out_dim)
-        self.act = torch.nn.GELU()
+        self.act = torch.nn.Tanh()
         
     def forward(self, x):
         x = self.act(self.in_layer(x))
