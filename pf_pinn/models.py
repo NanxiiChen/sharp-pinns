@@ -56,6 +56,10 @@ class PFEncodedPINNTwoNet(torch.nn.Module):
         c = (CSE - CLE) * (-2*phi**3 + 3*phi**2) + cl
         return torch.cat([phi, c], dim=1)
 
+MODELDICT = {
+    "mlp": MLP,
+    "modifiedmlp": ModifiedMLP
+}
         
 class PFPINN(torch.nn.Module):
     def __init__(
@@ -64,7 +68,8 @@ class PFPINN(torch.nn.Module):
         embedding_features=64,
         symmetrical_forward=True,
         arch="modifiedmlp",
-        fourier_embedding=True
+        fourier_embedding=True,
+        hard_constrain=True
     ):
         super().__init__()
         self.device = torch.device("cuda"
@@ -74,8 +79,10 @@ class PFPINN(torch.nn.Module):
         self.embedding = SpatialTemporalFourierEmbedding(DIM+1, embedding_features, scale=2).to(self.device)\
             if fourier_embedding \
             else torch.nn.Linear(DIM+1, embedding_features*4).to(self.device)
-        self.model = PFEncodedPINN(in_dim, hidden_dim, out_dim, layers, arch=arch).to(self.device)
-        
+        if hard_constrain:
+            self.model = PFEncodedPINN(in_dim, hidden_dim, out_dim, layers, arch=arch).to(self.device)
+        else:
+            self.model = MODELDICT[arch](in_dim, hidden_dim, out_dim, layers, norm=True).to(self.device)
         self.symmetrical_forward = symmetrical_forward
 
 

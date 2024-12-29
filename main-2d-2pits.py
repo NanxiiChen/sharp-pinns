@@ -119,7 +119,8 @@ net = pfp.PFPINN(
     layers=config.getint("TRAIN", "LAYERS"),
     symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),
     arch=config.get("TRAIN", "ARCH").strip('"'),
-    fourier_embedding=fourier_embedding
+    fourier_embedding=fourier_embedding,
+    hard_constrain=eval(config.get("TRAIN", "HARD_CONSTRAIN")),
 )
 evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)
@@ -219,7 +220,7 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
         
-        fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
+        # fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
         writer.add_figure("sampling", fig, epoch)
     
     
