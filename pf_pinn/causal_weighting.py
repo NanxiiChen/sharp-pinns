@@ -10,7 +10,7 @@ class CausalWeighter:
                 "min_thresh": 0.99,
                 "step": 10,
                 "mean_thresh": 0.5,
-                "max_thresh": 1.0
+                "max_thresh": 0.01
             }
         self.num_causal_seg = num_causal_seg
     

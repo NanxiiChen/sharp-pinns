@@ -221,7 +221,7 @@ for epoch in range(EPOCHS):
         icdata = icdata.to(net.device).detach().requires_grad_(True)
         
         # fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
-        writer.add_figure("sampling", fig, epoch)
+        # writer.add_figure("sampling", fig, epoch)
     
     
     residual_items = net.net_pde(data, return_dt=True)

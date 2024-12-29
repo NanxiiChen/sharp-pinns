@@ -9,6 +9,7 @@ class LossManager:
         self.loss_panel = {}
         self.weight_panel = {}
         self.loss_format = "{:.2e}"
+        self.alpha = 0.1
         
     def register_loss(self, names, losses):
         self.loss_panel = {}
@@ -17,7 +18,6 @@ class LossManager:
             
         
     def update_weights(self):
-        self.weight_panel = {}
         grads = np.zeros(len(self.loss_panel))
         for i, loss in enumerate(self.loss_panel.values()):
             self.pinn.zero_grad()
@@ -30,7 +30,14 @@ class LossManager:
     
         for i, name in enumerate(self.loss_panel.keys()):
             name = name.split("_")[0] + "_weight"
-            self.weight_panel[name] = weights[i]
+            if self.weight_panel.get(name) is None:
+                self.weight_panel[name] = weights[i]
+            else:
+                # moving average
+                self.weight_panel[name] = self.alpha * self.weight_panel[name] \
+                                            + (1-self.alpha) * weights[i]
+                
+                
         # return weights
     
     def weighted_loss(self):
