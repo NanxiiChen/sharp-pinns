@@ -91,19 +91,33 @@ class GeoTimeSampler:
         xys = torch.cat([xys, xys_local_1, xys_local_2], dim=0)
         xyts = torch.cat([xys, torch.full((xys.shape[0], 1), self.time_span[0], device="cuda")], dim=1)
         return xyts.float().requires_grad_(True)
-
+    
+    
+    def flux_sample(self, bc_num):
+        xts = pfp.make_lhs_sampling_data(
+            mins=[self.geo_span[0][0], self.geo_span[1][0], self.time_span[0]],
+            maxs=[self.geo_span[0][1], self.geo_span[1][1], self.time_span[1]],
+            num=bc_num)
+        bottom = torch.cat([xts[:, 0:1], torch.full((xts.shape[0], 1), self.geo_span[1][0], device="cuda"), xts[:, 1:2]], dim=1)
+        top = torch.cat([xts[:, 0:1], torch.full((xts.shape[0], 1), self.geo_span[1][1], device="cuda"), xts[:, 1:2]], dim=1)
+        return torch.cat([bottom, top], dim=0).float().requires_grad_(True)
+        
 
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 num_causal_seg = config.getint("TRAIN", "NUM_CAUSAL_SEG")
 causal = eval(config.get("TRAIN", "CAUSAL_WEIGHTING"))
+fourier_embedding = eval(config.get("TRAIN", "FOURIER_EMBEDDING"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
     in_dim=config.getint("TRAIN", "IN_DIM"),
     out_dim=config.getint("TRAIN", "OUT_DIM"),
     hidden_dim=config.getint("TRAIN", "HIDDEN_DIM"),
     layers=config.getint("TRAIN", "LAYERS"),
-    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),   
+    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),
+    arch=config.get("TRAIN", "ARCH").strip('"'),
+    fourier_embedding=fourier_embedding,
+    hard_constrain=eval(config.get("TRAIN", "HARD_CONSTRAIN")),
 )
 evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)
@@ -190,7 +204,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
 
     net.train()
-    pde = "ac" if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2) else "ch"
+    pde = "ac" if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 4) else "ch"
 
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
@@ -224,8 +238,8 @@ for epoch in range(EPOCHS):
         
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
-    # flux_forward = net.net_dev(flux_data, on="y")
+    flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
+    flux_forward = net.net_dev(flux_data, on=1)
     
     if causal:
         pde_seg_loss = torch.zeros(num_causal_seg, device=net.device)
@@ -240,15 +254,15 @@ for epoch in range(EPOCHS):
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     irr_loss = torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))
-    # flux_loss = torch.mean(flux_forward**2)
+    flux_loss = torch.mean(flux_forward**2)
     
     pde_loss_name = f"{pde}_loss"
-    loss_manager.register_loss([pde_loss_name, "bc_loss", "ic_loss", "irr_loss"],
+    loss_manager.register_loss([pde_loss_name, "bc_loss", "ic_loss", "irr_loss",],
                                  [pde_loss, bc_loss, ic_loss, irr_loss])
     
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    
+    if epoch % (BREAK_INTERVAL // 4) == 0:
         loss_manager.update_weights()
-        
         loss_manager.write_loss(epoch)
         loss_manager.write_weight(epoch)
         loss_manager.print_loss(epoch)
@@ -261,7 +275,7 @@ for epoch in range(EPOCHS):
     opt.step()
     scheduler.step()
 
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % (BREAK_INTERVAL // 4) == 0:
         
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')

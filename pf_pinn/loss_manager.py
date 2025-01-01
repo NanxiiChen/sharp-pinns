@@ -9,7 +9,7 @@ class LossManager:
         self.loss_panel = {}
         self.weight_panel = {}
         self.loss_format = "{:.2e}"
-        self.alpha = 0.1
+        self.alpha = 0.0
         
     def register_loss(self, names, losses):
         self.loss_panel = {}
