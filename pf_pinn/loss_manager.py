@@ -27,16 +27,20 @@ class LossManager:
         grads = np.clip(grads, 1e-8, 1e8)
         weights = np.mean(grads) / grads
         weights = np.clip(weights, 1e-8, 1e8)
-    
+        self.weight_panel = {}
         for i, name in enumerate(self.loss_panel.keys()):
             name = name.split("_")[0] + "_weight"
-            if self.weight_panel.get(name) is None:
-                self.weight_panel[name] = weights[i]
-            else:
-                # moving average
-                self.weight_panel[name] = self.alpha * self.weight_panel[name] \
-                                            + (1-self.alpha) * weights[i]
-                
+            self.weight_panel[name] = weights[i]
+            
+    
+        # for i, name in enumerate(self.loss_panel.keys()):
+        #     name = name.split("_")[0] + "_weight"
+        #     if self.weight_panel.get(name) is None:
+        #         self.weight_panel[name] = weights[i]
+        #     else:
+        #         # moving average
+        #         self.weight_panel[name] = self.alpha * self.weight_panel[name] \
+        #                                     + (1-self.alpha) * weights[i]
                 
         # return weights
     

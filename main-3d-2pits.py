@@ -122,20 +122,21 @@ class GeoTimeSampler:
         return xyzs.float().requires_grad_(True)
 
 
-
-
-
 geo_span = eval(config.get("TRAIN", "GEO_SPAN"))
 time_span = eval(config.get("TRAIN", "TIME_SPAN"))
 num_causal_seg = config.getint("TRAIN", "NUM_CAUSAL_SEG")
 causal = eval(config.get("TRAIN", "CAUSAL_WEIGHTING"))
+fourier_embedding = eval(config.get("TRAIN", "FOURIER_EMBEDDING"))
 sampler = GeoTimeSampler(geo_span, time_span)
 net = pfp.PFPINN(
     in_dim=config.getint("TRAIN", "IN_DIM"),
     out_dim=config.getint("TRAIN", "OUT_DIM"),
     hidden_dim=config.getint("TRAIN", "HIDDEN_DIM"),
     layers=config.getint("TRAIN", "LAYERS"),
-    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),   
+    symmetrical_forward=eval(config.get("TRAIN", "SYMMETRIC")),
+    arch=config.get("TRAIN", "ARCH").strip('"'),
+    fourier_embedding=fourier_embedding,
+    hard_constrain=eval(config.get("TRAIN", "HARD_CONSTRAIN")),
 )
 evaluator = pfp.Evaluator(net)
 loss_manager = pfp.LossManager(writer, net)
@@ -203,7 +204,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
