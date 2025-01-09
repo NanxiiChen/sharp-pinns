@@ -193,7 +193,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.8)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -204,7 +204,7 @@ RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 for epoch in range(EPOCHS):
 
     net.train()
-    pde = "ac" if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 4) else "ch"
+    pde = "ac" if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2) else "ch"
 
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
@@ -261,7 +261,7 @@ for epoch in range(EPOCHS):
                                  [pde_loss, bc_loss, ic_loss, irr_loss])
     
     
-    if epoch % (BREAK_INTERVAL // 4) == 0:
+    if epoch % (BREAK_INTERVAL // 2) == 0:
         loss_manager.update_weights()
         loss_manager.write_loss(epoch)
         loss_manager.write_weight(epoch)
@@ -275,7 +275,7 @@ for epoch in range(EPOCHS):
     opt.step()
     scheduler.step()
 
-    if epoch % (BREAK_INTERVAL // 4) == 0:
+    if epoch % (BREAK_INTERVAL // 2) == 0:
         
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
