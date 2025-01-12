@@ -227,10 +227,10 @@ RAR_BASE_SHAPE = config.getint("TRAIN", "RAR_BASE_SHAPE")
 RAR_SHAPE = config.getint("TRAIN", "RAR_SHAPE")
 
 
-
 for epoch in range(EPOCHS):
+
     net.train()
-    pde = "ac" if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2) else "ch"
+    pde = "ac+ch"
 
     if epoch % BREAK_INTERVAL == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
@@ -240,6 +240,7 @@ for epoch in range(EPOCHS):
         anchors = net.adaptive_sampling(RAR_SHAPE, residual_base_data,
                                         method="rar", )
 
+        net.train()
         data = torch.cat([geotime, anchors],
                          dim=0).detach().requires_grad_(True)
 
@@ -250,12 +251,15 @@ for epoch in range(EPOCHS):
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
+        
     
     
     residual_items = net.net_pde(data, return_dt=True)
-    pde_residual = residual_items[0] \
-        if pde == "ac" \
-        else residual_items[1]
+    # pde_residual = residual_items[0] \
+    #     if pde == "ac" \
+    #     else residual_items[1]
+    ac_residual = residual_items[0]
+    ch_residual = residual_items[1]
 
     
     dphi_dt = residual_items[2]
@@ -264,28 +268,34 @@ for epoch in range(EPOCHS):
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
     # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
-    # flux_forward = net.net_dev(flux_data, on=2)
+    # flux_forward = net.net_dev(flux_data, on=1)
     
     if causal:
-        pde_seg_loss = torch.zeros(num_causal_seg, device=net.device)
+        ac_seg_loss = torch.zeros(num_causal_seg, device=net.device)
+        ch_seg_loss = torch.zeros(num_causal_seg, device=net.device)
         for seg_idx, data_idx in enumerate(indices):
-            pde_seg_loss[seg_idx] = torch.mean(pde_residual[data_idx]**2)
-        pde_causal_weight = causal_weighter.compute_causal_weights(pde_seg_loss)
-        causal_weighter.update_causal_configs(pde_causal_weight, epoch)
-        pde_loss = torch.sum(pde_causal_weight * pde_seg_loss)
+            ac_seg_loss[seg_idx] = torch.mean(ac_residual[data_idx]**2)
+            ch_seg_loss[seg_idx] = torch.mean(ch_residual[data_idx]**2)
+        ac_causal_weight = causal_weighter.compute_causal_weights(ac_seg_loss)
+        ch_causal_weight = causal_weighter.compute_causal_weights(ch_seg_loss)
+        # causal_weighter.update_causal_configs(ac_causal_weight, epoch)
+        causal_weighter.update_causal_configs(ch_causal_weight, epoch)
+        ac_loss = torch.sum(ac_causal_weight * ac_seg_loss)
+        ch_loss = torch.sum(ch_causal_weight * ch_seg_loss)
+        
     else:
-        pde_loss = torch.mean(pde_residual**2)
+        ac_loss = torch.mean(ac_residual**2)
+        ch_loss = torch.mean(ch_residual**2)
         
     bc_loss = torch.mean((bc_forward - bc_func(bcdata))**2)
     ic_loss = torch.mean((ic_forward - ic_func(icdata))**2)
     irr_loss = torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))
     # flux_loss = torch.mean(flux_forward**2)
     
-    pde_loss_name = f"{pde}_loss"
-    loss_manager.register_loss([pde_loss_name, "bc_loss", "ic_loss", "irr_loss",],
-                                [pde_loss, bc_loss, ic_loss, irr_loss,])
+    loss_manager.register_loss(["ac_loss", "ch_loss", "bc_loss", "ic_loss", "irr_loss"],
+                                 [ac_loss, ch_loss, bc_loss, ic_loss, irr_loss])
     
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % BREAK_INTERVAL == 0:
         loss_manager.update_weights()
         
         loss_manager.write_loss(epoch)
@@ -300,7 +310,7 @@ for epoch in range(EPOCHS):
     opt.step()
     scheduler.step()
 
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % BREAK_INTERVAL == 0:
         
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
@@ -309,8 +319,35 @@ for epoch in range(EPOCHS):
         if causal:
             bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
             ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
-            fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
-                                                    pde, epoch, ts)
+                    
+            fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+            axes = axes.flatten()
+            ax = axes[0]
+            ax.plot(ts)
+            ax.set_title("time segments")
+            ax.set_ylabel("time (s)")
+            
+            
+            ax = axes[1]
+            ax.plot(ts, ac_causal_weight.cpu().numpy(), label="ac")
+            ax.plot(ts, ch_causal_weight.cpu().numpy(), label="ch")
+            ax.set_title(f"eps: {causal_weighter.causal_configs['eps']:.2e}")
+            ax.set_ylabel("Causal Weights")
+            ax.legend(loc="upper right")
+
+
+            ax = axes[2]
+            ax.plot(ts, ac_seg_loss.detach().cpu().numpy(), label="ac")
+            ax.set_title("AC segment loss")
+            ax.set_ylabel("AC segment loss")
+
+            ax = axes[3]
+            ax.plot(ts, ch_seg_loss.detach().cpu().numpy(), label="ch")
+            ax.set_title("CH segment loss")
+            ax.set_ylabel("CH segment loss")
+
+            fig.suptitle(f"epoch: {epoch} ")
+
             writer.add_figure("fig/causal_weights", fig, epoch)
         
         

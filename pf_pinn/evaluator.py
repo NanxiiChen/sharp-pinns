@@ -125,7 +125,7 @@ class Evaluator:
                                              "ylabel": "y" + geo_label_suffix,
                                              "zlabel": "z" + geo_label_suffix,
                                              "aspect": "auto",
-                                             "box_aspect": (2,2,1),})
+                                             "box_aspect": (4,2,1),})
 
         mesh_tensor = torch.from_numpy(mesh_points).float()        
         diffs = []
