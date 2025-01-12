@@ -275,27 +275,27 @@ for epoch in range(EPOCHS):
     opt.step()
     scheduler.step()
 
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    # if epoch % (BREAK_INTERVAL // 2) == 0:
         
-        TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
-        REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
+    #     TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
+    #     REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
               
 
-        if causal:
-            bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
-            ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
-            fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
-                                                    pde, epoch, ts)
-            writer.add_figure("fig/causal_weights", fig, epoch)
+    #     if causal:
+    #         bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
+    #         ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
+    #         fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
+    #                                                 pde, epoch, ts)
+    #         writer.add_figure("fig/causal_weights", fig, epoch)
             
         
-        fig, acc = evaluator.plot_predict(ts=TARGET_TIMES,
-                                        mesh_points=MESH_POINTS,
-                                        ref_prefix=REF_PREFIX)
+    #     fig, acc = evaluator.plot_predict(ts=TARGET_TIMES,
+    #                                     mesh_points=MESH_POINTS,
+    #                                     ref_prefix=REF_PREFIX)
 
-        torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
-        writer.add_figure("fig/predict", fig, epoch)
-        writer.add_scalar("acc", acc, epoch)
-        plt.close(fig)
-        writer.flush()
+    #     torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
+    #     writer.add_figure("fig/predict", fig, epoch)
+    #     writer.add_scalar("acc", acc, epoch)
+    #     plt.close(fig)
+    #     writer.flush()
        
