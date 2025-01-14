@@ -30,12 +30,12 @@ class CausalWeighter:
         if causal_weights[-1] > self.causal_configs["min_thresh"] \
             and self.causal_configs["eps"] < self.causal_configs["max_thresh"]:
             self.causal_configs["eps"] *= self.causal_configs["step"]
-            print(f"epoch {epoch}: "
+            print(f"Epoch {epoch}: "
                     f"increase eps to {self.causal_configs['eps']:.2e}")
             
         if torch.mean(causal_weights) < self.causal_configs["mean_thresh"]:
             self.causal_configs["eps"] /= self.causal_configs["step"]
-            print(f"epoch {epoch}: "
+            print(f"Epoch {epoch}: "
                     f"decrease eps to {self.causal_configs['eps']:.2e}")
             
             

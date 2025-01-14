@@ -29,12 +29,10 @@ class LossManager:
         weights = np.clip(weights, 1e-8, 1e8)
         self.weight_panel = {}
         for i, name in enumerate(self.loss_panel.keys()):
-            name = name.split("_")[0] + "_weight"
             self.weight_panel[name] = weights[i]
             
     
         # for i, name in enumerate(self.loss_panel.keys()):
-        #     name = name.split("_")[0] + "_weight"
         #     if self.weight_panel.get(name) is None:
         #         self.weight_panel[name] = weights[i]
         #     else:
@@ -45,9 +43,9 @@ class LossManager:
         # return weights
     
     def weighted_loss(self):
-        losses = 0
-        for weight, loss in zip(self.weight_panel.values(), self.loss_panel.values()):
-            losses += weight * loss
+        losses = torch.zeros(1, device=self.pinn.device)
+        for name, loss in self.loss_panel.items():
+            losses += self.weight_panel[name] * loss
         return losses
         
     
@@ -62,13 +60,13 @@ class LossManager:
         self.writer.flush()
         
     def print_loss(self, epoch):
-        print(f"Epoch {epoch}:", end=" ")
+        print(f"Loss at epoch {epoch}:", end=" ")
         for name, loss in self.loss_panel.items():
             print(f"{name}: {self.loss_format.format(loss.item())}", end=", ")
         print()
         
     def print_weight(self, epoch):
-        print(f"Epoch {epoch}:", end=" ")
+        print(f"Weights at epoch {epoch}:", end=" ")
         for name, weight in self.weight_panel.items():
             print(f"{name}: {self.loss_format.format(weight)}", end=", ")
         print()

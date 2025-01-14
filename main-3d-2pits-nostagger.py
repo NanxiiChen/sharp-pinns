@@ -292,7 +292,7 @@ for epoch in range(EPOCHS):
     irr_loss = torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))
     # flux_loss = torch.mean(flux_forward**2)
     
-    loss_manager.register_loss(["ac_loss", "ch_loss", "bc_loss", "ic_loss", "irr_loss"],
+    loss_manager.register_loss(["ac", "ch", "bc", "ic", "irr"],
                                  [ac_loss, ch_loss, bc_loss, ic_loss, irr_loss])
     
     if epoch % BREAK_INTERVAL == 0:
