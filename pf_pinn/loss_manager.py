@@ -19,10 +19,11 @@ class LossManager:
         
     def update_weights(self):
         grads = np.zeros(len(self.loss_panel))
-        for i, loss in enumerate(self.loss_panel.values()):
+        # for i, loss in enumerate(self.loss_panel.values()):
+        for idx, (name, loss) in enumerate(self.loss_panel.items()):
             self.pinn.zero_grad()
             grad = self.pinn.gradient(loss)
-            grads[i] = torch.sqrt(torch.sum(grad**2)).item()
+            grads[idx] = torch.sqrt(torch.sum(grad**2)).item()
             
         grads = np.clip(grads, 1e-8, 1e8)
         weights = np.mean(grads) / grads

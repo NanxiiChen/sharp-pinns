@@ -220,8 +220,8 @@ for epoch in range(EPOCHS):
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
         
-        fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
-        writer.add_figure("sampling", fig, epoch)
+        # fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
+        # writer.add_figure("sampling", fig, epoch)
     
     
     residual_items = net.net_pde(data, return_dt=True)
@@ -239,6 +239,7 @@ for epoch in range(EPOCHS):
     ic_forward = net.net_u(icdata)
     # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
     # flux_forward = net.net_dev(flux_data, on=1)
+
     
     if causal:
         ac_seg_loss = torch.zeros(num_causal_seg, device=net.device)
