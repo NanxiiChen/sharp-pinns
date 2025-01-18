@@ -163,11 +163,17 @@ class PFPINN(torch.nn.Module):
         ch = dc_dt - CH1 * nabla2c + CH1 * (CSE - CLE) * nabla2_h_phi
         ac = dphi_dt - AC1 * (sol[:, 1:2] - h_phi*(CSE-CLE) - CLE) * (CSE - CLE) * dh_dphi \
             + AC2 * dg_dphi - AC3 * nabla2phi 
-
-        if return_dt:
-            return [ac/1e6, ch, dphi_dt, dc_dt]
+            
+        # ac_l2 = torch.sqrt(torch.mean(ac**2)).detach()
+        # ch_l2 = torch.sqrt(torch.mean(ch**2)).detach()
+        # l2_ratio = ac_l2 / ch_l2
+        l2_ratio = 1e6
+        ac = ac / l2_ratio
         
-        return [ac/1e6, ch]
+        if return_dt:
+            return [ac, ch, dphi_dt, dc_dt]
+        
+        return [ac, ch]
         
     def gradient(self, loss):
         # compute gradient of loss w.r.t. model parameters

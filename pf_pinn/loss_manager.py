@@ -72,3 +72,21 @@ class LossManager:
             print(f"{name}: {self.loss_format.format(weight)}", end=", ")
         print()
     
+    def compute_similarity(self, name1, name2):
+        loss1 = self.loss_panel[name1] * self.weight_panel[name1]
+        loss2 = self.loss_panel[name2] * self.weight_panel[name2]
+        
+        self.pinn.zero_grad()
+        grad1 = self.pinn.gradient(loss1)
+        self.pinn.zero_grad()
+        grad2 = self.pinn.gradient(loss2)
+        
+        cos_sim = torch.sum(grad1 * grad2) / \
+            (torch.sqrt(torch.sum(grad1**2)) * torch.sqrt(torch.sum(grad1**2)))
+        grad_sim = 2*torch.sqrt(torch.sum(grad1**2)) * torch.sqrt(torch.sum(grad1**2)) / \
+            (torch.sum(grad1**2) + torch.sum(grad2**2))
+        
+        return cos_sim.item(), grad_sim.item()
+        
+        
+        

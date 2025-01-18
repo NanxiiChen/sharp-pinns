@@ -200,7 +200,7 @@ for epoch in range(EPOCHS):
     net.train()
     pde = "ac+ch"
 
-    if epoch % BREAK_INTERVAL == 0:
+    if epoch % (BREAK_INTERVAL//2) == 0:
         geotime, bcdata, icdata = sampler.resample(GEOTIME_SHAPE, BCDATA_SHAPE,
                                                    ICDATA_SHAPE)
         geotime = geotime.to(net.device)
@@ -266,22 +266,35 @@ for epoch in range(EPOCHS):
     loss_manager.register_loss(["ac", "ch", "bc", "ic", "irr"],
                                  [ac_loss, ch_loss, bc_loss, ic_loss, irr_loss])
     
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % (BREAK_INTERVAL//2) == 0:    
         loss_manager.update_weights()
-        
+        # cos_sim, grad_sim = loss_manager.compute_similarity("ac", "ch")
+        # writer.add_scalar("similarity/cos", cos_sim, epoch)
+        # writer.add_scalar("similarity/grad", grad_sim, epoch)
         loss_manager.write_loss(epoch)
         loss_manager.write_weight(epoch)
         loss_manager.print_loss(epoch)
         loss_manager.print_weight(epoch)
         
     losses = loss_manager.weighted_loss()
+    # a fake stagger 
+    # if epoch % BREAK_INTERVAL < (BREAK_INTERVAL // 2):
+    #     losses = loss_manager.weight_panel["ac"] * ac_loss \
+    #         + loss_manager.weight_panel["bc"] * bc_loss \
+    #         + loss_manager.weight_panel["ic"] * ic_loss \
+    #         + loss_manager.weight_panel["irr"] * irr_loss
+    # else:
+    #     losses = loss_manager.weight_panel["ch"] * ch_loss \
+    #         + loss_manager.weight_panel["bc"] * bc_loss \
+    #         + loss_manager.weight_panel["ic"] * ic_loss \
+    #         + loss_manager.weight_panel["irr"] * irr_loss
 
     opt.zero_grad()
     losses.backward()
     opt.step()
     scheduler.step()
 
-    if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % (BREAK_INTERVAL//2) == 0:
         
         TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
         REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
