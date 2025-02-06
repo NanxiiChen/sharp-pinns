@@ -16,8 +16,13 @@ class LossManager:
         for name, loss in zip(names, losses):
             self.loss_panel[name] = loss
             
+    def check_loss(self):
+        if len(self.loss_panel) == 0:
+            raise ValueError("No loss is registered.")
+            
         
     def update_weights(self):
+        self.check_loss()
         grads = np.zeros(len(self.loss_panel))
         # for i, loss in enumerate(self.loss_panel.values()):
         for idx, (name, loss) in enumerate(self.loss_panel.items()):
@@ -73,6 +78,7 @@ class LossManager:
         print()
     
     def compute_similarity(self, name1, name2):
+        self.check_loss()
         loss1 = self.loss_panel[name1] * self.weight_panel[name1]
         loss2 = self.loss_panel[name2] * self.weight_panel[name2]
         
@@ -87,6 +93,21 @@ class LossManager:
             (torch.sum(grad1**2) + torch.sum(grad2**2))
         
         return cos_sim.item(), grad_sim.item()
+    
+    def compute_grad_align_score(self):
+        # gradient alignment score
+        # 2 \| \frac{\sum_{i=1}^n  \frac{g_i}{\|g_i\|} }{n} \|^2 - 1
+        # where n is the number of losses
+        self.check_loss()
+        self.pinn.zero_grad()
+        grads = torch.stack([
+            self.pinn.gradient(loss) 
+            for loss in self.loss_panel.values()
+        ])
+        grad_norm = torch.sqrt(torch.sum(grads**2, dim=1))
+        grad_unit = grads / grad_norm[:, None]
+        grad_align = torch.sum(grad_unit, dim=0) / len(grad_unit)
+        return 2*torch.sum(grad_align**2) - 1
         
         
         

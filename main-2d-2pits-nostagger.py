@@ -185,7 +185,8 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 
 
-criteria = torch.nn.MSELoss()
+# criteria = torch.nn.MSELoss()
+# opt = torch.optim.Adam(net.parameters(), lr=LR)
 opt = pfp.SOAP(net.parameters(), lr=LR, betas=(.95, .95), 
            weight_decay=.001, precondition_frequency=2)
 scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.9)
@@ -276,6 +277,8 @@ for epoch in range(EPOCHS):
         loss_manager.write_weight(epoch)
         loss_manager.print_loss(epoch)
         loss_manager.print_weight(epoch)
+        gas = loss_manager.compute_grad_align_score()
+        writer.add_scalar("grad_align_score", gas, epoch)
         
     losses = loss_manager.weighted_loss()
     # a fake stagger 
