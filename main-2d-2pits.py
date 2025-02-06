@@ -186,7 +186,9 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 
 criteria = torch.nn.MSELoss()
-opt = torch.optim.Adam(net.parameters(), lr=LR)
+# opt = torch.optim.Adam(net.parameters(), lr=LR)
+opt = pfp.SOAP(net.parameters(), lr=LR, betas=(.95, .95), 
+           weight_decay=.01, precondition_frequency=5)
 scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=100, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
