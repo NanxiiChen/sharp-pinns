@@ -8,12 +8,12 @@ This framework features a novel staggered training scheme and an enhanced neural
 
 ### Methodology
 
-<img src="./img/sharp-pinns-schematic.png" width="800">
+<img src="./img/sharp-pinns-schematic.png" width="500">
 
 
 ### State-of-the-art benchmarks
 
-<img src="./img/benchmarks.png">
+<img src="./img/benchmarks.png" width="500">
 
 
 ## Configurations
