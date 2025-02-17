@@ -1,23 +1,24 @@
-# PINN stagger
+# SHARP-PINNs
 
-Staggered training scheme for physics-informed neural networks: solving complex phase-field corrosion problems with higher efficiency and accuracy
+Staggered HARd-constrained Physics-Informed Neural Networks for Phase-field modelling of corrosion
 
 ## Overview
 
+This framework features a novel staggered training scheme and an enhanced neural network architecture. Key features of this architecture include leveraging random Fourier features $\mathcal{F}$ as input embeddings, employing a modified MLP $\mathcal{M}$ as the primary backbone, and enforcing hard constraints $\mathcal{H}$ in the output layer. A schematic of the SHARP-PINNs framework is shown below.
+
 ### Methodology
 
-<img src="./img/stagger.png" width="800">
-
-<img src="./img/hard-constraint.png" width="800">
+<img src="./img/sharp-pinns-schematic.png" width="800">
 
 
-### Representative results
+### State-of-the-art benchmarks
 
-<img src="./img/2d-2pits-phi-fields-comparison-all.png">
+<img src="./img/benchmarks.png">
 
-<img src="./img/3d-1pits-phi-fields.png">
 
-## Configuration
+## Configurations
+
+Recommended configurations for the 2D and 3D cases are provided below.
 
 ### 2d-1pit
 
