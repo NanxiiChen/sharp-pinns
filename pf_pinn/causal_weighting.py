@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 class CausalWeighter:
     def __init__(self, num_causal_seg) -> None:
         self.causal_configs = {
-                "eps": 1e-5,
+                "eps": 1e-4,
                 "min_thresh": 0.99,
                 "step": 10,
                 "mean_thresh": 0.5,
-                "max_thresh": 0.01
+                "max_eps": 1e-3
             }
         self.num_causal_seg = num_causal_seg
     
@@ -28,7 +28,7 @@ class CausalWeighter:
                 
     def update_causal_configs(self, causal_weights, epoch):
         if causal_weights[-1] > self.causal_configs["min_thresh"] \
-            and self.causal_configs["eps"] < self.causal_configs["max_thresh"]:
+            and self.causal_configs["eps"] < self.causal_configs["max_eps"]:
             self.causal_configs["eps"] *= self.causal_configs["step"]
             print(f"Epoch {epoch}: "
                     f"increase eps to {self.causal_configs['eps']:.2e}")

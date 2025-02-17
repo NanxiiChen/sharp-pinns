@@ -193,7 +193,7 @@ def split_temporal_coords_into_segments(ts, time_span, num_seg):
 
 criteria = torch.nn.MSELoss()
 opt = torch.optim.Adam(net.parameters(), lr=LR)
-scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=200, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=500, gamma=0.9)
 
 GEOTIME_SHAPE = eval(config.get("TRAIN", "GEOTIME_SHAPE"))
 BCDATA_SHAPE = eval(config.get("TRAIN", "BCDATA_SHAPE"))
@@ -225,7 +225,7 @@ for epoch in range(EPOCHS):
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
-    
+        flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
     
     residual_items = net.net_pde(data, return_dt=True)
     pde_residual = residual_items[0] \
@@ -238,7 +238,6 @@ for epoch in range(EPOCHS):
         
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
     flux_forward = net.net_dev(flux_data, on=1)
     
     if causal:
@@ -256,8 +255,8 @@ for epoch in range(EPOCHS):
     irr_loss = torch.mean(torch.relu(dphi_dt)) + torch.mean(torch.relu(dc_dt))
     flux_loss = torch.mean(flux_forward**2)
     
-    loss_manager.register_loss([pde, "bc", "ic", "irr",],
-                                [pde_loss, bc_loss, ic_loss, irr_loss,])
+    loss_manager.register_loss([pde, "bc", "ic", "irr", "flux"],
+                                [pde_loss, bc_loss, ic_loss, irr_loss, flux_loss])
     
     
     if epoch % (BREAK_INTERVAL // 2) == 0:
@@ -274,27 +273,27 @@ for epoch in range(EPOCHS):
     opt.step()
     scheduler.step()
 
-    # if epoch % (BREAK_INTERVAL // 2) == 0:
+    if epoch % (BREAK_INTERVAL // 2) == 0:
         
-    #     TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
-    #     REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
+        TARGET_TIMES = eval(config.get("TRAIN", "TARGET_TIMES"))
+        REF_PREFIX = config.get("TRAIN", "REF_PREFIX").strip('"')
               
 
-    #     if causal:
-    #         bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
-    #         ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
-    #         fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
-    #                                                 pde, epoch, ts)
-    #         writer.add_figure("fig/causal_weights", fig, epoch)
+        if causal:
+            bins = np.linspace(time_span[0], time_span[1], num_causal_seg + 1)
+            ts = (bins[1:] + bins[:-1]) / 2 / TIME_COEF
+            fig = causal_weighter.plot_causal_weights(pde_seg_loss, pde_causal_weight,
+                                                    pde, epoch, ts)
+            writer.add_figure("fig/causal_weights", fig, epoch)
             
         
-    #     fig, acc = evaluator.plot_predict(ts=TARGET_TIMES,
-    #                                     mesh_points=MESH_POINTS,
-    #                                     ref_prefix=REF_PREFIX)
+        fig, acc = evaluator.plot_predict(ts=TARGET_TIMES,
+                                        mesh_points=MESH_POINTS,
+                                        ref_prefix=REF_PREFIX)
 
-    #     torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
-    #     writer.add_figure("fig/predict", fig, epoch)
-    #     writer.add_scalar("acc", acc, epoch)
-    #     plt.close(fig)
-    #     writer.flush()
+        torch.save(net.state_dict(), f"{save_root}/{now}/model-{epoch}.pt")
+        writer.add_figure("fig/predict", fig, epoch)
+        writer.add_scalar("acc", acc, epoch)
+        plt.close(fig)
+        writer.flush()
        

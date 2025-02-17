@@ -221,6 +221,7 @@ for epoch in range(EPOCHS):
 
         bcdata = bcdata.to(net.device).detach().requires_grad_(True)
         icdata = icdata.to(net.device).detach().requires_grad_(True)
+        # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
         
         # fig, ax = evaluator.plot_samplings(geotime, bcdata, icdata, anchors)
         # writer.add_figure("sampling", fig, epoch)
@@ -237,7 +238,6 @@ for epoch in range(EPOCHS):
         
     bc_forward = net.net_u(bcdata)
     ic_forward = net.net_u(icdata)
-    # flux_data = sampler.flux_sample(BCDATA_SHAPE).to(net.device)
     # flux_forward = net.net_dev(flux_data, on=1)
     
     if causal:
