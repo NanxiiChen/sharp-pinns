@@ -258,3 +258,17 @@ TARGET_TIMES = [0.000, 1.311, 3.938, 9.521]
 MESH_POINTS = "./data/3d-2pits/mesh_points.npy"
 REF_PREFIX = "./data/3d-2pits/sol-"
 ```
+
+## Citation
+
+```bibtex
+@misc{chen2025sharppinnsstaggeredhardconstrainedphysicsinformed,
+      title={Sharp-PINNs: staggered hard-constrained physics-informed neural networks for phase field modelling of corrosion}, 
+      author={Nanxi Chen and Chuanjie Cui and Rujin Ma and Airong Chen and Sifan Wang},
+      year={2025},
+      eprint={2502.11942},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2502.11942}, 
+}
+```
